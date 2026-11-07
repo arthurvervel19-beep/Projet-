@@ -1,5 +1,8 @@
 // Interface : souris, clavier, caméra, panneau de commandes, informations, messages.
-import { UNITS, BUILDINGS, TECHS, AGES, BUILD_MENU, RES_ICON, RES_NAME, costText } from './config.js';
+import { UNITS, BUILDINGS, TECHS, AGES, BUILD_MENU, RES_NAME } from './config.js';
+import { icon, techIcon, resImg, costHTML, resIconURL } from './icons.js';
+
+const RI = (k) => resImg(k);
 
 const HOTKEYS = 'QWERTYASDFGHZXCVBN';
 
@@ -29,7 +32,7 @@ export class UI {
     this.mctx = this.minimap.getContext('2d');
     this.setupMinimap();
     this.bind();
-    document.querySelectorAll('img.ri').forEach((im) => { im.src = this.r.resIcon(im.dataset.res); });
+    document.querySelectorAll('img.ri').forEach((im) => { im.src = resIconURL(im.dataset.res); });
   }
 
   setupMinimap() {
@@ -42,19 +45,27 @@ export class UI {
   }
 
   // ------------------------------------------------------------------ événements
+  listen(t, ev, fn, o) { t.addEventListener(ev, fn, o); this.listeners.push([t, ev, fn, o]); }
+
+  destroy() {
+    for (const [t, ev, fn, o] of this.listeners) t.removeEventListener(ev, fn, o);
+    this.listeners = [];
+  }
+
   bind() {
+    this.listeners = [];
     const c = this.canvas;
-    c.addEventListener('contextmenu', (e) => e.preventDefault());
-    c.addEventListener('mousedown', (e) => this.onDown(e));
-    window.addEventListener('mousemove', (e) => this.onMove(e));
-    window.addEventListener('mouseup', (e) => this.onUp(e));
-    document.addEventListener('mouseleave', () => { this.mouse.inside = false; });
-    document.addEventListener('mouseenter', () => { this.mouse.inside = true; });
-    c.addEventListener('wheel', (e) => this.onWheel(e), { passive: false });
-    window.addEventListener('keydown', (e) => this.onKey(e));
-    window.addEventListener('keyup', (e) => this.keys.delete(e.key));
-    window.addEventListener('blur', () => this.keys.clear());
-    window.addEventListener('resize', () => { this.r.resize(); this.setupMinimap(); });
+    this.listen(c, 'contextmenu', (e) => e.preventDefault());
+    this.listen(c, 'mousedown', (e) => this.onDown(e));
+    this.listen(window, 'mousemove', (e) => this.onMove(e));
+    this.listen(window, 'mouseup', (e) => this.onUp(e));
+    this.listen(document, 'mouseleave', () => { this.mouse.inside = false; });
+    this.listen(document, 'mouseenter', () => { this.mouse.inside = true; });
+    this.listen(c, 'wheel', (e) => this.onWheel(e), { passive: false });
+    this.listen(window, 'keydown', (e) => this.onKey(e));
+    this.listen(window, 'keyup', (e) => this.keys.delete(e.key));
+    this.listen(window, 'blur', () => this.keys.clear());
+    this.listen(window, 'resize', () => { this.r.resize(); this.setupMinimap(); });
 
     // minicarte
     let mmDrag = false;
@@ -63,18 +74,18 @@ export class UI {
       const w = this.r.minimapToWorld(e.clientX - rect.left, e.clientY - rect.top, this.mmW, this.mmH);
       return w;
     };
-    this.minimap.addEventListener('contextmenu', (e) => e.preventDefault());
-    this.minimap.addEventListener('mousedown', (e) => {
+    this.listen(this.minimap, 'contextmenu', (e) => e.preventDefault());
+    this.listen(this.minimap, 'mousedown', (e) => {
       const w = mmMove(e);
       if (e.button === 2) { this.commandAt(w.x, w.y, null, e.shiftKey); return; }
       mmDrag = true; this.r.centerOn(w.x, w.y);
     });
-    window.addEventListener('mousemove', (e) => { if (mmDrag) { const w = mmMove(e); this.r.centerOn(w.x, w.y); } });
-    window.addEventListener('mouseup', () => { mmDrag = false; });
+    this.listen(window, 'mousemove', (e) => { if (mmDrag) { const w = mmMove(e); this.r.centerOn(w.x, w.y); } });
+    this.listen(window, 'mouseup', () => { mmDrag = false; });
 
     // panneaux (délégation : fonctionne même si le contenu est régénéré)
     const cmds = this.el('commands');
-    cmds.addEventListener('mousedown', (e) => {
+    this.listen(cmds, 'mousedown', (e) => {
       const b = e.target.closest('[data-btn]');
       if (!b) return;
       e.preventDefault();
@@ -82,7 +93,7 @@ export class UI {
       if (btn) { this.sound('click'); btn.action(e); }
     });
     const info = this.el('info');
-    info.addEventListener('mousedown', (e) => {
+    this.listen(info, 'mousedown', (e) => {
       const q = e.target.closest('[data-cancel]');
       if (q) { this.g.issue(this.me, { type: 'cancel', building: +q.dataset.b, index: +q.dataset.cancel }); this.hudTimer = 0; return; }
       const m = e.target.closest('[data-sel]');
@@ -105,10 +116,10 @@ export class UI {
       tip.style.top = Math.max(8, e.clientY - r.height - 12) + 'px';
     };
     for (const el of [cmds, info, this.el('topbar')]) {
-      el.addEventListener('mousemove', showTip);
-      el.addEventListener('mouseleave', () => tip.classList.add('hidden'));
+      this.listen(el, 'mousemove', showTip);
+      this.listen(el, 'mouseleave', () => tip.classList.add('hidden'));
     }
-    this.el('idle-btn').addEventListener('click', () => this.selectIdleVillager());
+    this.listen(this.el('idle-btn'), 'click', () => this.selectIdleVillager());
   }
 
   worldAt(sx, sy) { return this.r.toWorld(sx, sy); }
@@ -116,7 +127,7 @@ export class UI {
   onDown(e) {
     this.mouse.x = e.clientX; this.mouse.y = e.clientY; this.mouse.inside = true;
     if (this.paused) return;
-    if (e.button === 1) { this.pan = { x: e.clientX, y: e.clientY, cx: this.r.cam.x, cy: this.r.cam.y }; e.preventDefault(); return; }
+    if (e.button === 1) { this.pan = { x: e.clientX, y: e.clientY }; e.preventDefault(); return; }
     const w = this.worldAt(e.clientX, e.clientY);
     if (e.button === 2) {
       if (this.placing) { this.placing = null; return; }
@@ -147,9 +158,8 @@ export class UI {
   onMove(e) {
     this.mouse.x = e.clientX; this.mouse.y = e.clientY; this.mouse.inside = true;
     if (this.pan) {
-      this.r.cam.x = this.pan.cx - (e.clientX - this.pan.x) / this.r.cam.zoom;
-      this.r.cam.y = this.pan.cy - (e.clientY - this.pan.y) / this.r.cam.zoom;
-      this.r.clampCam();
+      this.r.panBy(-(e.clientX - this.pan.x), -(e.clientY - this.pan.y));
+      this.pan.x = e.clientX; this.pan.y = e.clientY;
       return;
     }
     if (this.placing) this.updatePlacement(this.worldAt(e.clientX, e.clientY));
@@ -166,6 +176,10 @@ export class UI {
     if (this.placing) cur = 'crosshair';
     else if (this.mode === 'attackMove') cur = 'crosshair';
     else if (this.hasOwnUnits()) {
+      // limite la fréquence des tests de survol (lancer de rayon)
+      const now = performance.now();
+      if (now - (this.lastHover || 0) < 70) return;
+      this.lastHover = now;
       const t = this.pick(e.clientX, e.clientY);
       if (t && this.g.isEnemy(this.me, t.owner)) cur = 'crosshair';
       else if (t && (t.kind === 'resource' || (t.kind === 'building' && t.owner === this.me))) cur = 'pointer';
@@ -201,6 +215,7 @@ export class UI {
       let list = inBox;
       if (!ds.shift) this.selected.clear();
       list.forEach((u) => this.selected.add(u.id));
+      if (list.length) this.announce(list, 'select');
       this.hudTimer = 0;
       return;
     }
@@ -221,7 +236,8 @@ export class UI {
         for (const id of [...this.selected]) { const x = this.g.get(id); if (!x || x.kind !== 'unit') this.selected.delete(id); }
       } else {
         this.selected = new Set([t.id]);
-        if (t.owner === this.me) this.sound('select');
+        if (t.owner === this.me) { this.sound('select'); if (t.kind === 'unit') this.announce([t], 'select'); }
+        else if (t.kind === 'resource' && t.type === 'sheep') this.sound('bleat');
       }
       this.lastClick = { t: now, id: t.id };
     } else if (!ds.shift) this.selected.clear();
@@ -230,15 +246,8 @@ export class UI {
 
   onWheel(e) {
     e.preventDefault();
-    const before = this.worldAt(e.clientX, e.clientY);
-    const z = this.r.cam.zoom * (e.deltaY < 0 ? 1.1 : 1 / 1.1);
-    this.r.cam.zoom = Math.max(0.45, Math.min(1.8, z));
-    const after = this.worldAt(e.clientX, e.clientY);
-    // garde le point sous le curseur fixe
-    const pb = { x: (before.x - before.y) * 32, y: (before.x + before.y) * 16 };
-    const pa = { x: (after.x - after.y) * 32, y: (after.x + after.y) * 16 };
-    this.r.cam.x += pb.x - pa.x; this.r.cam.y += pb.y - pa.y;
-    this.r.clampCam();
+    const f = Math.pow(1.0015, -e.deltaY);
+    this.r.zoomAt(e.clientX, e.clientY, Math.max(0.8, Math.min(1.25, f)));
   }
 
   onKey(e) {
@@ -260,6 +269,7 @@ export class UI {
         if (this.lastGroup === k && now - this.lastGroupT < 400) { const u = this.g.get(ids[0]); this.r.centerOn(u.x, u.y); }
         this.lastGroup = k; this.lastGroupT = now;
         this.selected = new Set(ids); this.hudTimer = 0;
+        this.announce(ids.map((id) => this.g.get(id)), 'select');
       }
       return;
     }
@@ -283,6 +293,7 @@ export class UI {
 
   // ------------------------------------------------------------------ sélection et ordres
   pick(sx, sy) {
+    if (this.r.pick) return this.r.pick(sx, sy);
     const g = this.g, r = this.r, me = this.me;
     const z = r.cam.zoom;
     const pl = g.players[me];
@@ -332,6 +343,9 @@ export class UI {
     if (units.length) {
       const kind = this.g.smartCommand(this.me, units.map((u) => u.id), x, y, target);
       this.sound('order');
+      let act = kind === 'attack' ? 'attack' : kind === 'build' ? 'build' : 'order';
+      if (kind === 'gather' && target) act = this.g.resTypeOf(target) || 'order';
+      this.announce(units, act);
       this.marker = { x: target ? target.x : x, y: target ? target.y : y, t, color: kind === 'attack' ? '#ff6b5e' : kind === 'move' ? '#7dff7a' : '#ffe066' };
       void shift;
       return;
@@ -402,7 +416,7 @@ export class UI {
   update(dt) {
     const r = this.r;
     // défilement de la caméra
-    const sp = 900 / r.cam.zoom * dt;
+    const sp = 1100 * dt;
     let dx = 0, dy = 0;
     if (this.keys.has('ArrowLeft')) dx -= 1;
     if (this.keys.has('ArrowRight')) dx += 1;
@@ -415,7 +429,7 @@ export class UI {
       if (this.mouse.y <= m) dy -= 1;
       if (this.mouse.y >= window.innerHeight - m) dy += 1;
     }
-    if (dx || dy) { r.cam.x += dx * sp; r.cam.y += dy * sp; r.clampCam(); }
+    if (dx || dy) r.panBy(dx * sp, dy * sp);
 
     // événements du jeu
     for (const ev of this.g.events) {
@@ -429,9 +443,14 @@ export class UI {
         this.lastAlert = { x: ev.x, y: ev.y };
       }
       if (ev.type === 'age' && ev.player === this.me) { this.hudTimer = 0; this.sound('age'); }
-      if (ev.type === 'trained' && ev.player === this.me) { this.hudTimer = 0; this.sound('trained', 0.6); }
+      if (ev.type === 'trained' && ev.player === this.me) {
+        this.hudTimer = 0; this.sound('trained', 0.6);
+        const nu = this.g.get(ev.unit);
+        if (nu && Math.random() < 0.6) this.announce([nu], 'trained');
+      }
     }
     this.g.events.length = 0;
+    if (this.audio) this.audio.setPhase(this.g.players[this.me].age);
     this.pings = this.pings.filter((p) => performance.now() / 1000 - p.t < 3);
 
     // nettoyage de la sélection
@@ -466,6 +485,16 @@ export class UI {
 
   sound(kind, vol = 1) { if (this.audio) this.audio.sfxPlay(kind, vol); }
 
+  // réplique vocale de l'unité principale d'un groupe
+  announce(units, action) {
+    if (!this.audio) return;
+    const list = units.filter((u) => u && u.kind === 'unit' && u.owner === this.me);
+    if (!list.length) return;
+    const mil = list.find((u) => u.type !== 'villager');
+    const u = action === 'attack' && mil ? mil : (mil && list.filter((x) => x.type !== 'villager').length >= list.length / 2 ? mil : list[0]);
+    this.audio.voice(u.type, action, 1, UNITS[u.type].cls);
+  }
+
   // son spatialisé selon la position à l'écran
   positional(ev) {
     if (!this.audio) return;
@@ -488,7 +517,7 @@ export class UI {
   iconOf(e) {
     if (e.kind === 'unit') return this.img('unit', e.type, e.owner);
     if (e.kind === 'building') return this.img('building', e.type, e.owner);
-    return { tree: '🌳', gold: '🪙', stone: '🪨', berries: '🫐', sheep: '🐑' }[e.type];
+    return RI({ tree: 'wood', gold: 'gold', stone: 'stone', berries: 'food', sheep: 'food' }[e.type]);
   }
 
   portrait(e) {
@@ -504,7 +533,7 @@ export class UI {
     if (!list.length) {
       const p = g.players[this.me];
       info.innerHTML = `<h3>${p.name}</h3><div class="row">${AGES[p.age].name}</div>
-        <div class="row">Récolté : ${Object.entries(p.stats.gathered).map(([k, v]) => `${RES_ICON[k]} <b>${v}</b>`).join(' ')}</div>
+        <div class="row">Récolté : ${Object.entries(p.stats.gathered).map(([k, v]) => `<span class="stat">${RI(k)}<b>${v}</b></span>`).join(' ')}</div>
         <div class="row">Ennemis tués : <b>${p.stats.kills}</b> — Pertes : <b>${p.stats.losses}</b></div>
         <div class="row" style="margin-top:10px">Astuce : sélectionnez un villageois pour construire, ou l'hôtel de ville (H) pour former des villageois.</div>`;
       return;
@@ -523,35 +552,35 @@ export class UI {
     if (e.kind === 'resource') {
       const n = { tree: 'Arbre', gold: "Filon d'or", stone: 'Carrière de pierre', berries: 'Buisson de baies', sheep: 'Mouton' }[e.type];
       const rt = { tree: 'wood', gold: 'gold', stone: 'stone', berries: 'food', sheep: 'food' }[e.type];
-      html = `<h3>${this.iconOf(e)} ${n}</h3><div class="row">${ownerTxt}</div><div class="row">${RES_ICON[rt]} Restant : <b>${Math.ceil(e.amount)}</b> / ${e.maxAmount}</div>`;
+      html = `<div class="head"><div class="portrait res">${RI(rt)}</div><div><h3>${n}</h3><div class="row">${ownerTxt}</div><div class="row"><span class="stat">${RI(rt)} Restant : <b>${Math.ceil(e.amount)}</b> / ${e.maxAmount}</span></div></div></div>`;
     } else if (e.kind === 'unit') {
       const st = g.unitStats(e.owner, e.type);
       html = `<div class="head">${this.portrait(e)}<div><h3>${st.name}</h3><div class="row owner">${ownerTxt}</div>
         <div class="hpbar"><div style="width:${100 * e.hp / e.maxHp}%"></div></div></div></div>
-        <div class="row">❤️ <b>${Math.ceil(e.hp)}/${e.maxHp}</b> ⚔️ <b>${st.atk}</b>${st.range ? ` 🎯 <b>${st.range}</b>` : ''} 🛡️ <b>${st.armor[0]}/${st.armor[1]}</b> 👁️ <b>${st.los}</b></div>`;
+        <div class="row stats"><span class="stat" data-tip="Points de vie">${icon('heart')}<b>${Math.ceil(e.hp)}/${e.maxHp}</b></span><span class="stat" data-tip="Attaque">${icon('sword')}<b>${st.atk}</b></span>${st.range ? `<span class="stat" data-tip="Portée">${icon('range')}<b>${st.range}</b></span>` : ''}<span class="stat" data-tip="Armure (mêlée / perçage)">${icon('shield')}<b>${st.armor[0]}/${st.armor[1]}</b></span><span class="stat" data-tip="Champ de vision">${icon('eye')}<b>${st.los}</b></span></div>`;
       if (Object.keys(st.bonus || {}).length) html += `<div class="row">Bonus : ${Object.entries(st.bonus).map(([k, v]) => `+${v} contre ${{ cavalry: 'cavalerie', archer: 'archers', infantry: 'infanterie', building: 'bâtiments' }[k] || k}`).join(', ')}</div>`;
       if (e.type === 'villager') {
         const o = e.order;
         const act = !o ? 'Inactif' : o.kind === 'gather' ? `Récolte : ${RES_NAME[o.resType]}` : o.kind === 'build' ? 'Construit' : o.kind === 'drop' ? 'Dépose sa récolte' : o.kind === 'attack' ? 'Attaque' : 'Se déplace';
-        html += `<div class="row">${act}${e.carry.amount ? ` — porte ${RES_ICON[e.carry.type]} <b>${e.carry.amount}</b>/${g.carryCap(e.owner)}` : ''}</div>`;
+        html += `<div class="row">${act}${e.carry.amount ? ` — porte ${RI(e.carry.type)} <b>${e.carry.amount}</b>/${g.carryCap(e.owner)}` : ''}</div>`;
       }
       html += `<div class="row" style="font-size:12px">${st.desc}</div>`;
     } else {
       const def = BUILDINGS[e.type];
       html = `<div class="head">${this.portrait(e)}<div><h3>${def.name}</h3><div class="row owner">${ownerTxt}</div>
         <div class="hpbar"><div style="width:${100 * e.hp / e.maxHp}%"></div></div></div></div>
-        <div class="row">❤️ <b>${Math.ceil(e.hp)}/${e.maxHp}</b> 🛡️ <b>${g.armorOf(e).join('/')}</b>${def.attack ? ` ⚔️ <b>${g.buildingAttack(e).atk}</b> 🎯 <b>${g.buildingAttack(e).range}</b>` : ''}</div>`;
+        <div class="row stats"><span class="stat" data-tip="Points de vie">${icon('heart')}<b>${Math.ceil(e.hp)}/${e.maxHp}</b></span><span class="stat" data-tip="Armure (mêlée / perçage)">${icon('shield')}<b>${g.armorOf(e).join('/')}</b></span>${def.attack ? `<span class="stat" data-tip="Attaque">${icon('sword')}<b>${g.buildingAttack(e).atk}</b></span><span class="stat" data-tip="Portée">${icon('range')}<b>${g.buildingAttack(e).range}</b></span>` : ''}</div>`;
       if (!e.built) html += `<div class="row">En construction : <b>${Math.floor(e.progress * 100)}%</b></div>`;
-      if (def.farm && e.built) html += `<div class="row">🍖 Nourriture restante : <b>${Math.ceil(e.food)}</b></div>`;
-      if (def.pop) html += `<div class="row">👥 +${def.pop} population</div>`;
+      if (def.farm && e.built) html += `<div class="row"><span class="stat">${RI('food')} Nourriture restante : <b>${Math.ceil(e.food)}</b></span></div>`;
+      if (def.pop) html += `<div class="row"><span class="stat">${icon('pop')} +${def.pop} population</span></div>`;
       if (def.market && e.owner === this.me) {
-        html += `<div class="row">Cours : ${Object.entries(g.marketPrices).map(([k, v]) => `${RES_ICON[k]} achat <b>${v}</b> / vente <b>${Math.round(v * 0.7)}</b> 🪙`).join(' — ')}</div>`;
+        html += `<div class="row">Cours : ${Object.entries(g.marketPrices).map(([k, v]) => `<span class="stat">${RI(k)} achat <b>${v}</b> · vente <b>${Math.round(v * 0.7)}</b> ${RI('gold')}</span>`).join(' — ')}</div>`;
       }
       if (e.queue.length && e.owner === this.me) {
         html += '<div class="queue">' + e.queue.map((q, i) => {
-          const icon = q.kind === 'unit' ? this.img('unit', q.id) : q.kind === 'tech' ? TECHS[q.id].icon : '⚜';
+          const qi = q.kind === 'unit' ? this.img('unit', q.id) : q.kind === 'tech' ? techIcon(q.id) : icon('ageUp');
           const name = q.kind === 'unit' ? UNITS[q.id].name : q.kind === 'tech' ? TECHS[q.id].name : AGES[q.id].name;
-          return `<div class="q ${q.housed ? 'housed' : ''}" data-cancel="${i}" data-b="${e.id}" data-tip="${name} — clic pour annuler">${icon}${i === 0 ? `<div class="bar" style="width:${100 * q.t / q.time}%"></div>` : ''}</div>`;
+          return `<div class="q ${q.housed ? 'housed' : ''}" data-cancel="${i}" data-b="${e.id}" data-tip="${name} — clic pour annuler">${qi}${i === 0 ? `<div class="bar" style="width:${100 * q.t / q.time}%"></div>` : ''}</div>`;
         }).join('') + '</div>';
       }
       if (!e.queue.length || e.owner !== this.me) html += `<div class="row" style="font-size:12px">${def.desc}</div>`;
@@ -565,7 +594,7 @@ export class UI {
     const list = this.sel().filter((e) => e.owner === this.me);
     const btns = [];
     const reqTxt = (age) => `<div class="no">Nécessite l'${AGES[age].name.slice(2)}</div>`;
-    const costHtml = (cost) => `<div class="cost">${costText(cost)}</div>`;
+    const costHtml = (cost) => `<div class="cost">${costHTML(cost)}</div>`;
     if (!list.length) return btns;
     const units = list.filter((e) => e.kind === 'unit');
     if (units.length) {
@@ -580,10 +609,10 @@ export class UI {
           });
         }
       } else {
-        btns.push({ icon: '<span class="emo">⚔️</span>', key: 'Q', tip: '<b>Attaque-mouvement</b> (Q)<div>Se déplace en attaquant les ennemis rencontrés.</div>', action: () => { this.mode = 'attackMove'; } });
+        btns.push({ icon: icon('attackMove'), key: 'Q', tip: '<b>Attaque-mouvement</b> (Q)<div>Se déplace en attaquant les ennemis rencontrés.</div>', action: () => { this.mode = 'attackMove'; } });
       }
-      btns.push({ icon: '<span class="emo">✋</span>', key: 'X', tip: '<b>Stop</b> (X)', action: () => this.g.issue(this.me, { type: 'stop', ids: units.map((u) => u.id) }) });
-      btns.push({ icon: '<span class="emo">💀</span>', key: null, tip: '<b>Supprimer</b> (Suppr)', action: () => { this.g.issue(this.me, { type: 'delete', ids: units.map((u) => u.id) }); this.selected.clear(); } });
+      btns.push({ icon: icon('stop'), key: 'X', tip: '<b>Stop</b> (X)', action: () => this.g.issue(this.me, { type: 'stop', ids: units.map((u) => u.id) }) });
+      btns.push({ icon: icon('delete'), key: null, tip: '<b>Supprimer</b> (Suppr)', action: () => { this.g.issue(this.me, { type: 'delete', ids: units.map((u) => u.id) }); this.selected.clear(); } });
       return btns;
     }
     const b = list[0];
@@ -600,7 +629,7 @@ export class UI {
         const st = g.unitStats(this.me, type);
         btns.push({
           icon: this.img('unit', type), key, disabled: !okAge || !g.canAfford(p, u.cost),
-          tip: `<b>${u.name}</b> (${key}) — Maj+clic : ×5<div>${u.desc}</div><div>❤️ ${st.hp} ⚔️ ${st.atk}${st.range ? ` 🎯 ${st.range}` : ''} 🛡️ ${st.armor.join('/')} ⏱️ ${u.time}s</div>${costHtml(u.cost)}${okAge ? '' : reqTxt(u.age)}`,
+          tip: `<b>${u.name}</b> (${key}) — Maj+clic : ×5<div>${u.desc}</div><div class="tip-stats">${icon('heart')} ${st.hp} ${icon('sword')} ${st.atk}${st.range ? ` ${icon('range')} ${st.range}` : ''} ${icon('shield')} ${st.armor.join('/')} ${icon('clock')} ${u.time}s</div>${costHtml(u.cost)}${okAge ? '' : reqTxt(u.age)}`,
           action: (e) => this.g.issue(this.me, { type: 'train', building: b.id, unit: type, count: e && e.shiftKey ? 5 : 1 }) && (this.hudTimer = 0),
         });
       }
@@ -611,8 +640,8 @@ export class UI {
         const okAge = p.age >= t.age;
         const key = nextKey();
         btns.push({
-          icon: `<span class="emo">${t.icon}</span>`, key, disabled: !okAge || !g.canAfford(p, t.cost),
-          tip: `<b>${t.name}</b> (${key})<div>${t.desc}</div><div>⏱️ ${t.time}s</div>${costHtml(t.cost)}${okAge ? '' : reqTxt(t.age)}`,
+          icon: techIcon(tech), key, disabled: !okAge || !g.canAfford(p, t.cost),
+          tip: `<b>${t.name}</b> (${key})<div>${t.desc}</div><div class="tip-stats">${icon('clock')} ${t.time}s</div>${costHtml(t.cost)}${okAge ? '' : reqTxt(t.age)}`,
           action: () => this.g.issue(this.me, { type: 'research', building: b.id, tech }) && (this.hudTimer = 0),
         });
       }
@@ -620,21 +649,21 @@ export class UI {
         const next = AGES[p.age + 1];
         const reqOk = g.ageRequirementMet(p);
         btns.push({
-          icon: '<span class="emo">⬆️</span>', key: 'Z', disabled: !reqOk || !g.canAfford(p, next.cost),
-          tip: `<b>Passer à l'${next.name.slice(2)}</b> (Z)<div>Débloque de nouveaux bâtiments, unités et technologies.</div><div>⏱️ ${next.time}s</div>${costHtml(next.cost)}${reqOk ? '' : `<div class="no">${g.ageRequirementText(p)}</div>`}`,
+          icon: icon('ageUp'), key: 'Z', disabled: !reqOk || !g.canAfford(p, next.cost),
+          tip: `<b>Passer à l'${next.name.slice(2)}</b> (Z)<div>Débloque de nouveaux bâtiments, unités et technologies.</div><div class="tip-stats">${icon('clock')} ${next.time}s</div>${costHtml(next.cost)}${reqOk ? '' : `<div class="no">${g.ageRequirementText(p)}</div>`}`,
           action: () => this.g.issue(this.me, { type: 'ageUp', building: b.id }) && (this.hudTimer = 0),
         });
       }
       if (def.market) {
         for (const r of ['food', 'wood', 'stone']) {
-          btns.push({ icon: `<img src="${this.r.resIcon(r)}" style="width:70%;height:70%">`, badge: 'achat', key: nextKey(), tip: `<b>Acheter 100 ${RES_NAME[r]}</b><div>Coût : ${g.marketPrices[r]} 🪙</div>`, action: () => this.g.issue(this.me, { type: 'market', action: 'buy', res: r }) });
+          btns.push({ icon: `${resImg(r, 'mk')}${icon('buy', 'mk-arrow buy')}`, badge: 'achat', key: nextKey(), tip: `<b>Acheter 100 ${RES_NAME[r]}</b><div>Coût : ${g.marketPrices[r]} ${RI('gold')}</div>`, action: () => this.g.issue(this.me, { type: 'market', action: 'buy', res: r }) });
         }
         for (const r of ['food', 'wood', 'stone']) {
-          btns.push({ icon: `<img src="${this.r.resIcon(r)}" style="width:70%;height:70%">`, badge: 'vente', key: nextKey(), tip: `<b>Vendre 100 ${RES_NAME[r]}</b><div>Gain : ${Math.round(g.marketPrices[r] * 0.7)} 🪙</div>`, action: () => this.g.issue(this.me, { type: 'market', action: 'sell', res: r }) });
+          btns.push({ icon: `${resImg(r, 'mk')}${icon('sell', 'mk-arrow sell')}`, badge: 'vente', key: nextKey(), tip: `<b>Vendre 100 ${RES_NAME[r]}</b><div>Gain : ${Math.round(g.marketPrices[r] * 0.7)} ${RI('gold')}</div>`, action: () => this.g.issue(this.me, { type: 'market', action: 'sell', res: r }) });
         }
       }
     }
-    btns.push({ icon: '<span class="emo">💀</span>', key: null, tip: '<b>Détruire le bâtiment</b> (Suppr)', action: () => { this.g.issue(this.me, { type: 'delete', ids: [b.id] }); this.selected.clear(); } });
+    btns.push({ icon: icon('delete'), key: null, tip: '<b>Détruire le bâtiment</b> (Suppr)', action: () => { this.g.issue(this.me, { type: 'delete', ids: [b.id] }); this.selected.clear(); } });
     return btns;
   }
 

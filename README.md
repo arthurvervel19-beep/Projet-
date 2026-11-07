@@ -23,38 +23,29 @@ Ouvrez ensuite <http://localhost:3000> dans votre navigateur. Pour changer de po
 
 ## Contenu
 
-- **Carte procédurale isométrique** : lacs, plages, forêts, filons d'or et de pierre,
-  baies, moutons. Une graine permet de rejouer la même carte.
-- **4 ressources** : nourriture, bois, or et pierre, plus la population (maisons).
-- **4 âges** : Tribal, Féodal, Châteaux et Impérial. Chacun débloque des unités, des
-  bâtiments et des technologies.
-- **15 bâtiments** : hôtel de ville, maison, moulin, camps de bûcherons et de mineurs,
-  ferme (qui se ressème toute seule), palissade (tracée en cliquant-glissant), caserne,
-  camp de tir à l'arc, écurie, forge, marché, tour de guet, atelier de siège et forteresse.
-- **15 unités** : villageois, milicien, piquier, épéiste, champion, archer, tirailleur,
-  arbalétrier, éclaireur, chevalier, paladin, bélier, catapulte (dégâts de zone),
-  bombarde et garde royale.
-- **Combat** : armure de mêlée et de perçage, bonus d'unités (les piquiers contre la
-  cavalerie, les tirailleurs contre les archers, le siège contre les bâtiments),
-  projectiles et tours qui tirent.
-- **18 technologies** : récolte, brouette, forge, armures, empennage, maçonnerie…
-- **Marché** avec des cours qui évoluent selon les achats et les ventes.
-- **Brouillard de guerre**, minicarte, alertes d'attaque, groupes de contrôle,
-  attaque-mouvement, points de ralliement et file de production.
-- **Rendu soigné** : terrain peint pixel par pixel (transitions douces, relief, eau
-  profonde, écume, sous-bois, herbes et fleurs). Bâtiments texturés (pierre de taille,
-  colombages, planches, tuiles, ardoise, chaume) avec ombres portées, bannières animées,
-  fumée, ailes de moulin et incendies quand ils sont endommagés. Arbres et rochers
-  détaillés, vignettage chaud, interface médiévale et portraits générés par le moteur.
-- **Musique originale générée en temps réel** : luth, flûte à bec, chalémie, vielle à
-  roue (bourdon), tambour et tambourin, sur des gammes modales médiévales. Trois
-  ambiances (village, danse, bataille) qui suivent l'intensité des combats.
-- **Bruitages synthétisés** et spatialisés : haches, pioches, marteaux, épées, flèches,
-  catapultes, effondrements, cor d'alerte et fanfares. Réglages du volume dans le menu
-  pause (Échap), bouton ♫ pour couper le son.
-- **IA adverse** en 3 niveaux (facile, normal, difficile). Elle gère son économie, change
-  d'âge, recherche des technologies, adapte la composition de son armée, se défend et
-  lance des vagues d'attaque.
+- **Rendu 3D temps réel (WebGL, Three.js)** : lumière du soleil et ombres douces, occlusion
+  ambiante (GTAO), étalonnage colorimétrique, anticrénelage. Terrain en relief avec mélange
+  de sols (herbe, terre, sable, sous-bois), eau animée avec écume et reflets, herbe et arbres
+  qui ondulent au vent, ombres de nuages, brouillard de guerre adouci. Particules : fumée des
+  cheminées, forge, incendies des bâtiments endommagés, poussière, explosions.
+- **Modèles 3D procéduraux** texturés (pierre, colombages, tuiles, ardoise, chaume, planches)
+  avec bandes et bannières aux couleurs du joueur. Unités animées (marche, attaque,
+  récolte) : fantassins, archers, cavaliers, engins de siège. Portraits 3D dans l'interface.
+- **4 qualités graphiques** : Ultra, Équilibrée, Performance (3D) et Classique (2D, utilisée
+  automatiquement si WebGL 2 n'est pas disponible).
+- **Carte procédurale** : lacs, plages, forêts, filons d'or et de pierre, baies, moutons.
+- **4 ressources**, **4 âges**, **16 bâtiments** (dont palissade et muraille de pierre à
+  tracer en cliquant-glissant, avec tours automatiques aux angles), **15 unités**,
+  **18 technologies**, marché à cours variables.
+- **Combat** : armures de mêlée et de perçage, bonus d'unités, projectiles, tours qui tirent.
+- **Musique rock / électro générée en temps réel** : batterie, guitares saturées doublées,
+  basse, nappes et arpèges de synthés, montées et impacts. Le style suit la partie
+  (économie, développement, bataille, victoire).
+- **Voix des unités** (synthèse vocale française du navigateur) à la sélection et aux ordres,
+  cris de combat et de mort, hennissements, bêlements, bruitages spatialisés.
+- **Interface moderne** : panneaux translucides, icônes vectorielles, info-bulles détaillées,
+  minicarte, alertes, groupes de contrôle, attaque-mouvement, points de ralliement.
+- **IA adverse** en 3 niveaux (facile, normal, difficile).
 
 ## Commandes
 
@@ -80,10 +71,14 @@ public/js/map.js     génération procédurale de la carte
 public/js/pathfinding.js  A* 8 directions avec lissage des trajets
 public/js/game.js    moteur de simulation (sans DOM, testable dans Node)
 public/js/ai.js      intelligence artificielle
-public/js/render.js  rendu isométrique sur canvas
-public/js/terrain.js terrain peint (blocs de 16×16 tuiles mis en cache)
-public/js/sprites.js textures procédurales, arbres, rochers, bâtiments en cache
-public/js/audio.js   musique procédurale et bruitages (Web Audio API)
+public/js/r3d/       rendu 3D : moteur, shaders, modèles, textures procédurales
+public/js/render.js  rendu 2D « classique » (repli sans WebGL)
+public/js/terrain.js champs du terrain et couleurs (minicarte, rendu 2D)
+public/js/sprites.js sprites du rendu 2D
+public/js/icons.js   icônes vectorielles de l'interface
+public/js/audio.js   musique rock / électro, voix et bruitages (Web Audio API)
+public/vendor/       Three.js et modules de post-traitement (licence MIT)
+public/fonts/        polices Cinzel et Inter (licence SIL OFL)
 public/js/ui.js      souris, clavier, interface
 public/js/main.js    menu et boucle de jeu
 test/                tests (node --test)
@@ -101,6 +96,17 @@ npm test
 
 Les tests génèrent des cartes, vérifient la récolte et font jouer l'IA contre elle-même
 pendant 16 minutes de jeu simulé.
+
+## Performances
+
+La qualité **Ultra** est prévue pour une carte graphique récente. Sur un ordinateur portable
+ou une carte graphique intégrée, choisissez **Équilibrée** ou **Performance** dans le menu.
+
+## Crédits
+
+- [Three.js](https://threejs.org) (licence MIT, voir `public/vendor/THREE-LICENSE.txt`)
+- Polices Cinzel et Inter (licence SIL Open Font License, voir `public/fonts/`)
+- Graphismes, musiques et sons : générés par le code du jeu (créations originales)
 
 ## Pistes d'évolution
 

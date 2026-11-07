@@ -84,6 +84,17 @@ export class Renderer {
     this.canvas.width = Math.round(this.w * dpr); this.canvas.height = Math.round(this.h * dpr);
   }
 
+  panBy(dx, dy) { this.cam.x += dx / this.cam.zoom; this.cam.y += dy / this.cam.zoom; this.clampCam(); }
+
+  zoomAt(sx, sy, f) {
+    const before = this.toWorld(sx, sy);
+    this.cam.zoom = Math.max(0.45, Math.min(1.8, this.cam.zoom * f));
+    const after = this.toWorld(sx, sy);
+    this.cam.x += ((before.x - before.y) - (after.x - after.y)) * HW;
+    this.cam.y += ((before.x + before.y) - (after.x + after.y)) * HH;
+    this.clampCam();
+  }
+
   centerOn(x, y) { const p = iso(x, y); this.cam.x = p.x; this.cam.y = p.y; this.clampCam(); }
 
   clampCam() {

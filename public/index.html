@@ -4,24 +4,23 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Aube des Royaumes</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700;900&family=EB+Garamond:ital,wght@0,400;0,600;1,400&display=swap" rel="stylesheet">
+  <script type="importmap">{ "imports": { "three": "./vendor/three.module.min.js" } }</script>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
   <canvas id="game"></canvas>
+  <canvas id="overlay"></canvas>
 
   <!-- Barre du haut : ressources -->
-  <div id="topbar" class="hidden">
+  <div id="topbar" class="glass hidden">
     <div class="res" data-tip="Nourriture"><img class="ri" data-res="food" alt=""><b id="r-food">0</b><i id="v-food"></i></div>
     <div class="res" data-tip="Bois"><img class="ri" data-res="wood" alt=""><b id="r-wood">0</b><i id="v-wood"></i></div>
     <div class="res" data-tip="Or"><img class="ri" data-res="gold" alt=""><b id="r-gold">0</b><i id="v-gold"></i></div>
     <div class="res" data-tip="Pierre"><img class="ri" data-res="stone" alt=""><b id="r-stone">0</b><i id="v-stone"></i></div>
-    <div class="res" data-tip="Population"><span class="pop-ico">⚑</span><b id="r-pop">0/0</b></div>
+    <div class="res" data-tip="Population"><span class="pop-ico" data-icon="pop"></span><b id="r-pop">0/0</b></div>
     <div id="age-label">Âge Tribal</div>
     <div class="spacer"></div>
-    <button id="idle-btn" class="small" title="Villageois inactif (touche .)">💤 <span id="idle-count">0</span></button>
+    <button id="idle-btn" data-tip="Villageois inactifs (touche .)"><i data-icon="idle"></i><span id="idle-count">0</span></button>
     <div id="clock">00:00</div>
     <select id="speed" title="Vitesse du jeu">
       <option value="0.75">×0,75</option>
@@ -29,24 +28,24 @@
       <option value="1.5">×1,5</option>
       <option value="2">×2</option>
     </select>
-    <button id="music-btn" class="small" title="Couper / rétablir le son">♫</button>
-    <button id="pause-btn" class="small" title="Menu (Échap)">☰</button>
+    <button id="music-btn" class="icon-btn" data-tip="Couper / rétablir le son"><i data-icon="music"></i></button>
+    <button id="pause-btn" class="icon-btn" data-tip="Menu et réglages (Échap)"><i data-icon="menu"></i></button>
   </div>
 
   <div id="messages"></div>
 
   <!-- Panneau du bas -->
   <div id="bottom" class="hidden">
-    <div id="minimap-wrap"><canvas id="minimap"></canvas></div>
-    <div id="info"></div>
-    <div id="commands"></div>
+    <div id="minimap-wrap" class="glass"><canvas id="minimap"></canvas></div>
+    <div id="info" class="glass"></div>
+    <div id="commands" class="glass"></div>
   </div>
   <div id="tooltip" class="hidden"></div>
 
   <!-- Menu principal -->
   <div id="menu" class="overlay">
     <div class="panel">
-      <div class="crest">⚜</div>
+      <svg class="crest" viewBox="0 0 48 48" fill="currentColor"><path d="M24 3c-3 5-5 9-5 14 0 3 2 5 5 7 3-2 5-4 5-7 0-5-2-9-5-14zM10 16c-4 0-7 3-7 7 0 5 5 8 11 9-3-3-4-6-3-9 0-3 1-5 3-6-1-1-2-1-4-1zm28 0c-2 0-3 0-4 1 2 1 3 3 3 6 1 3 0 6-3 9 6-1 11-4 11-9 0-4-3-7-7-7zM15 31c2 2 5 3 9 3s7-1 9-3l1 3c-3 2-6 3-10 3s-7-1-10-3zm4 6h10l-1 8h-8z"/></svg>
       <h1>Aube des Royaumes</h1>
       <p class="sub">Stratégie en temps réel — bâtissez, récoltez, conquérez.</p>
       <div class="divider"></div>
@@ -71,6 +70,14 @@
             <option value="riche">Riches</option>
           </select>
         </label>
+        <label>Qualité graphique
+          <select id="opt-quality">
+            <option value="high" selected>Ultra (3D)</option>
+            <option value="medium">Équilibrée (3D)</option>
+            <option value="low">Performance (3D)</option>
+            <option value="2d">Classique (2D)</option>
+          </select>
+        </label>
         <label>Graine de la carte
           <input id="opt-seed" type="number" placeholder="aléatoire">
         </label>
@@ -91,15 +98,18 @@
     </div>
   </div>
 
+  <div id="loading" class="overlay hidden"><div class="loader"><div class="spinner"></div><p>Génération du monde…</p></div></div>
+
   <div id="pause" class="overlay hidden">
     <div class="panel">
       <h2>Pause</h2>
       <div class="form audio-form">
         <label>Musique <input id="vol-music" type="range" min="0" max="1" step="0.05"></label>
         <label>Effets sonores <input id="vol-sfx" type="range" min="0" max="1" step="0.05"></label>
+        <label>Voix des unités <input id="vol-voice" type="range" min="0" max="1" step="0.05"></label>
       </div>
       <button id="resume-btn" class="big">Reprendre</button>
-      <button id="quit-btn">Abandonner la partie</button>
+      <button id="quit-btn" class="ghost">Abandonner la partie</button>
     </div>
   </div>
 
@@ -111,6 +121,7 @@
     </div>
   </div>
 
+  <div class="credits">Moteur 3D : Three.js (MIT) · Polices : Cinzel, Inter (OFL)</div>
   <script type="module" src="js/main.js"></script>
 </body>
 </html>

@@ -149,6 +149,10 @@ export const BUILDINGS = {
     name: 'Palissade', icon: '🪵', cost: { wood: 2 }, size: 1, hp: 250, time: 4, age: 0, wall: true,
     armor: [2, 5], los: 1, hotkey: 'P', desc: 'Mur de bois. Cliquez-glissez pour tracer une ligne.',
   },
+  stone_wall: {
+    name: 'Muraille de pierre', icon: '🧱', cost: { stone: 6 }, size: 1, hp: 1800, time: 7, age: 1, wall: true,
+    armor: [8, 10], los: 2, hotkey: 'U', desc: 'Rempart crénelé très résistant. Cliquez-glissez pour tracer une ligne.',
+  },
   barracks: {
     name: 'Caserne', icon: '⚔️', cost: { wood: 175 }, size: 3, hp: 1200, time: 35, age: 0,
     trains: ['militia', 'spearman', 'swordsman', 'champion'], armor: [0, 7], los: 5, countsForAge: true, hotkey: 'B',
@@ -191,7 +195,7 @@ export const BUILDINGS = {
 
 // Ordre d'affichage du menu de construction des villageois
 export const BUILD_MENU = [
-  'house', 'mill', 'lumber_camp', 'mining_camp', 'farm', 'palisade', 'market', 'town_center',
+  'house', 'mill', 'lumber_camp', 'mining_camp', 'farm', 'palisade', 'stone_wall', 'market', 'town_center',
   'barracks', 'archery_range', 'stable', 'blacksmith', 'tower', 'siege_workshop', 'fortress',
 ];
 

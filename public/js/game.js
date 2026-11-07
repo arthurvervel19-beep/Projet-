@@ -879,6 +879,7 @@ export class Game {
       u.carry.amount += 1;
       if (o.gk === 'tree') this.sfx('chop', u.x, u.y);
       else if (o.gk === 'gold' || o.gk === 'stone') this.sfx('mine', u.x, u.y);
+      else if (o.gk === 'sheep' && this.rand() < 0.06) this.sfx('bleat', u.x, u.y);
       if (u.carry.amount >= cap || t.dead) break;
     }
   }
