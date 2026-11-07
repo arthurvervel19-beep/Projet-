@@ -1,5 +1,5 @@
 // Interface : souris, clavier, caméra, panneau de commandes, informations, messages.
-import { UNITS, BUILDINGS, TECHS, AGES, BUILD_MENU, RES_NAME } from './config.js';
+import { UNITS, BUILDINGS, TECHS, AGES, BUILD_MENU, RES_NAME, CIVS } from './config.js';
 import { icon, techIcon, resImg, costHTML, resIconURL } from './icons.js';
 
 const RI = (k) => resImg(k);
@@ -473,7 +473,7 @@ export class UI {
     const popEl = this.el('r-pop');
     popEl.textContent = `${p.pop}/${p.popCap}`;
     popEl.style.color = p.pop >= p.popCap ? '#ff7a5a' : '';
-    this.el('age-label').textContent = AGES[p.age].name + (p.agingUp ? ' ⏳' : '');
+    this.el('age-label').textContent = `${CIVS[p.civ] ? CIVS[p.civ].name + ' · ' : ''}${AGES[p.age].name}${p.agingUp ? ' ⏳' : ''}`;
     const s = Math.floor(g.time);
     this.el('clock').textContent = `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
     this.el('idle-count').textContent = g.units.filter((u) => u.owner === this.me && u.type === 'villager' && !u.order).length;
@@ -623,6 +623,7 @@ export class UI {
     if (b.built) {
       for (const type of def.trains || []) {
         const u = UNITS[type];
+        if (u.civ && u.civ !== p.civ) continue;
         const okAge = p.age >= u.age;
         if (!okAge && u.age > p.age + 1) continue;
         const key = nextKey();

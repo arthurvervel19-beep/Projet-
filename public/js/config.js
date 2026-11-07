@@ -110,10 +110,70 @@ export const UNITS = {
   },
   royal_guard: {
     name: 'Garde royale', icon: '👑', cost: { food: 65, gold: 50 }, time: 18, hp: 85, atk: 11, atkType: 'melee',
-    range: 0, rof: 1.9, speed: 1.6, los: 5, armor: [2, 2], cls: 'infantry', from: 'fortress', age: 2,
-    desc: 'Unité unique de la forteresse : robuste et redoutable.',
+    range: 0, rof: 1.9, speed: 1.6, los: 5, armor: [2, 2], cls: 'infantry', from: 'fortress', age: 2, civ: 'francs',
+    desc: 'Unité unique franque : chevalier à pied robuste et redoutable.',
+  },
+  legionary: {
+    name: 'Légionnaire', icon: '🛡️', cost: { food: 60, gold: 40 }, time: 16, hp: 70, atk: 9, atkType: 'melee',
+    bonus: { building: 3 }, range: 0, rof: 1.9, speed: 1.5, los: 5, armor: [3, 4], cls: 'infantry', from: 'fortress', age: 2, civ: 'romains',
+    desc: 'Unité unique romaine : grand bouclier, très résistant aux flèches.',
+  },
+  chariot: {
+    name: 'Char de guerre', icon: '🏹', cost: { food: 70, wood: 60, gold: 30 }, time: 22, hp: 95, atk: 6, atkType: 'pierce',
+    bonus: { infantry: 2 }, range: 4, rof: 2, speed: 2.1, los: 7, armor: [1, 2], cls: 'cavalry', from: 'fortress', age: 2, civ: 'egyptiens',
+    projectile: 'arrow', desc: 'Unité unique égyptienne : archer sur char, rapide et résistant.',
+  },
+  slinger: {
+    name: 'Frondeur', icon: '🪨', cost: { food: 40, stone: 25 }, time: 15, hp: 40, atk: 5, atkType: 'pierce',
+    bonus: { infantry: 4 }, range: 5, rof: 2, speed: 1.55, los: 7, armor: [0, 2], cls: 'archer', from: 'fortress', age: 2, civ: 'incas',
+    projectile: 'pebble', desc: 'Unité unique inca : la fronde écrase l’infanterie.',
+  },
+  samurai: {
+    name: 'Samouraï', icon: '⚔️', cost: { food: 60, gold: 40 }, time: 16, hp: 75, atk: 12, atkType: 'melee',
+    bonus: { infantry: 4, cavalry: 2 }, range: 0, rof: 1.6, speed: 1.6, los: 5, armor: [1, 1], cls: 'infantry', from: 'fortress', age: 2, civ: 'japonais',
+    desc: 'Unité unique japonaise : frappe vite et fort.',
+  },
+  berserker: {
+    name: 'Berserker', icon: '🪓', cost: { food: 65, gold: 35 }, time: 15, hp: 70, atk: 13, atkType: 'melee',
+    range: 0, rof: 1.8, speed: 1.85, los: 5, armor: [0, 1], cls: 'infantry', from: 'fortress', age: 2, civ: 'vikings',
+    desc: 'Unité unique viking : guerrier furieux et très rapide.',
   },
 };
+
+// Civilisations : style, bonus et unité unique
+export const CIVS = {
+  francs: {
+    name: 'Francs', realm: 'Royaume franc', unique: 'royal_guard', music: ['dorian', 'aeolian'],
+    desc: 'Châteaux de pierre, colombages et tuiles.', bonus: 'Cavalerie : +20 PV. Fermes : +40 nourriture.',
+    apply: (m) => { m.hp.cavalry += 20; m.farmFood += 40; },
+  },
+  romains: {
+    name: 'Romains', realm: 'Empire romain', unique: 'legionary', music: ['aeolian', 'mixolydian'],
+    desc: 'Marbre, colonnades et toits de terre cuite.', bonus: 'Infanterie : +1/+1 armure. Bâtiments : +15 % PV.',
+    apply: (m) => { m.armor.infantry[0] += 1; m.armor.infantry[1] += 1; m.bhp *= 1.15; },
+  },
+  egyptiens: {
+    name: 'Égyptiens', realm: "Royaume d'Égypte", unique: 'chariot', music: ['hijaz', 'phrygian'],
+    desc: 'Grès, pylônes, obélisques et toits plats.', bonus: "Récolte de l'or et de la pierre : +20 %.",
+    apply: (m) => { m.gather.gold *= 1.2; m.gather.stone *= 1.2; },
+  },
+  incas: {
+    name: 'Incas', realm: 'Empire inca', unique: 'slinger', music: ['pentaMinor', 'dorian'],
+    desc: 'Pierres ajustées, portes trapézoïdales, toits de chaume.', bonus: 'Villageois : +1/+1 armure. Maisons : +3 population.',
+    apply: (m) => { m.vilArmor[0] += 1; m.vilArmor[1] += 1; m.housePop += 3; },
+  },
+  japonais: {
+    name: 'Japonais', realm: 'Shogunat du Japon', unique: 'samurai', music: ['inScale', 'aeolian'],
+    desc: 'Bois sombre, cloisons blanches et toits incurvés.', bonus: "L'infanterie attaque 20 % plus vite. Bûcherons : +15 %.",
+    apply: (m) => { m.rof.infantry *= 0.8; m.gather.tree *= 1.15; },
+  },
+  vikings: {
+    name: 'Vikings', realm: 'Jarls du Nord', unique: 'berserker', music: ['dorian', 'aeolian'],
+    desc: 'Longues maisons de rondins, toits pentus, proues de dragon.', bonus: 'Infanterie : +15 % de vitesse. Villageois : +10 PV.',
+    apply: (m) => { m.speed.infantry *= 1.15; m.vilHp += 10; },
+  },
+};
+export const CIV_IDS = Object.keys(CIVS);
 
 export const BUILDINGS = {
   town_center: {
@@ -188,7 +248,7 @@ export const BUILDINGS = {
   },
   fortress: {
     name: 'Forteresse', icon: '🏰', cost: { stone: 650 }, size: 4, hp: 4800, time: 120, age: 2,
-    trains: ['royal_guard'], attack: { atk: 11, range: 8, rof: 2 }, armor: [8, 11], los: 10, countsForAge: true,
+    trains: ['royal_guard', 'legionary', 'chariot', 'slinger', 'samurai', 'berserker'], attack: { atk: 11, range: 8, rof: 2 }, armor: [8, 11], los: 10, countsForAge: true,
     hotkey: 'C', desc: 'Puissante défense, forme la Garde royale.',
   },
 };
@@ -290,6 +350,9 @@ export function defaultMods() {
     range: { archer: 0, building: 0 },
     hp: { infantry: 0, cavalry: 0, archer: 0, siege: 0 },
     bhp: 1,
+    housePop: 0,
+    rof: { villager: 1, infantry: 1, cavalry: 1, archer: 1, siege: 1 },
+    speed: { villager: 1, infantry: 1, cavalry: 1, archer: 1, siege: 1 },
   };
 }
 

@@ -145,16 +145,17 @@ function farmSoil(size) {
 }
 
 // ------------------------------------------------------------------ matériaux de construction
-function stoneWall(size, base = [178, 168, 146], mortar = [110, 100, 84], seed = 21) {
+function stoneWall(size, base = [178, 168, 146], mortar = [110, 100, 84], seed = 21, rows = 8, varAmt = 34) {
   const r = prng(seed), c = canvas(size), g = c.getContext('2d');
   g.fillStyle = col(...mortar); g.fillRect(0, 0, size, size);
-  const rows = 8, rh = size / rows;
+  const rh = size / rows;
   for (let row = 0; row < rows; row++) {
     let x = (row % 2) * -rh * 0.8;
     while (x < size) {
       const w = rh * (1.1 + r() * 1.1);
-      const v = (r() - 0.5) * 34;
-      const x0 = x + 2, y0 = row * rh + 2, ww = w - 4, hh = rh - 4;
+      const v = (r() - 0.5) * varAmt;
+      const gap = rows > 10 ? 1.5 : 2;
+      const x0 = x + gap, y0 = row * rh + gap, ww = w - gap * 2, hh = rh - gap * 2;
       const grd = g.createLinearGradient(0, y0, 0, y0 + hh);
       grd.addColorStop(0, col(base[0] + v + 22, base[1] + v + 22, base[2] + v + 20));
       grd.addColorStop(0.5, col(base[0] + v, base[1] + v, base[2] + v));
@@ -173,9 +174,9 @@ function stoneWall(size, base = [178, 168, 146], mortar = [110, 100, 84], seed =
   return c;
 }
 
-function plaster(size) {
-  const r = prng(22), c = canvas(size), g = c.getContext('2d');
-  noiseFill(g, size, [228, 214, 182], [26, 26, 26], [4, 16, 64, 128], r);
+function plaster(size, base = [228, 214, 182], seed = 22) {
+  const r = prng(seed), c = canvas(size), g = c.getContext('2d');
+  noiseFill(g, size, base, [26, 26, 26], [4, 16, 64, 128], r);
   for (let i = 0; i < 30; i++) {
     const x = r() * size, y = r() * size, rr = 10 + r() * 40;
     const grd = g.createRadialGradient(x, y, 0, x, y, rr);
@@ -271,6 +272,52 @@ function cloth(size) {
   return c;
 }
 
+// pierres polygonales ajustées (maçonnerie inca)
+function ashlar(size) {
+  const r = prng(61), c = canvas(size), g = c.getContext('2d');
+  const n = 6, cell = size / n;
+  const pts = [];
+  for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) pts.push([(i + 0.15 + r() * 0.7) * cell, (j + 0.15 + r() * 0.7) * cell, (r() - 0.5) * 40]);
+  const img = g.createImageData(size, size), d = img.data;
+  const nz = makeNoise(r, 32);
+  for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
+    let d1 = 1e9, d2 = 1e9, best = 0;
+    const ci = Math.floor(x / cell), cj = Math.floor(y / cell);
+    for (let dj = -1; dj <= 1; dj++) for (let di = -1; di <= 1; di++) {
+      const ii = (ci + di + n) % n, jj = (cj + dj + n) % n;
+      const p = pts[jj * n + ii];
+      const px = p[0] + (ci + di - ii) * cell, py = p[1] + (cj + dj - jj) * cell;
+      const dd = Math.hypot(x - px, y - py);
+      if (dd < d1) { d2 = d1; d1 = dd; best = jj * n + ii; } else if (dd < d2) d2 = dd;
+    }
+    const edge = d2 - d1;
+    const v = pts[best][2] + (nz(x / size * 32, y / size * 32) - 0.5) * 30;
+    const bevel = Math.min(1, edge / 10);
+    const k = edge < 2.2 ? 0.25 : 0.55 + bevel * 0.45;
+    const i = (y * size + x) * 4;
+    d[i] = (150 + v) * k; d[i + 1] = (146 + v) * k; d[i + 2] = (136 + v) * k; d[i + 3] = 255;
+  }
+  g.putImageData(img, 0, 0);
+  return c;
+}
+
+// rondins horizontaux (architecture viking)
+function logs(size) {
+  const r = prng(62), c = canvas(size), g = c.getContext('2d');
+  const n = 6, h = size / n;
+  for (let k = 0; k < n; k++) {
+    const y = k * h;
+    const grd = g.createLinearGradient(0, y, 0, y + h);
+    const v = (r() - 0.5) * 30;
+    grd.addColorStop(0, col(70 + v, 48 + v, 30 + v)); grd.addColorStop(0.35, col(132 + v, 96 + v, 62 + v));
+    grd.addColorStop(0.7, col(104 + v, 74 + v, 46 + v)); grd.addColorStop(1, col(46 + v, 30 + v, 18 + v));
+    g.fillStyle = grd; g.fillRect(0, y, size, h);
+    for (let i = 0; i < 40; i++) { g.strokeStyle = col(50, 34, 20, 0.35); g.lineWidth = 1 + r(); const yy = y + 4 + r() * (h - 8), x = r() * size; g.beginPath(); g.moveTo(x, yy); g.lineTo(x + 20 + r() * 60, yy + (r() - 0.5) * 3); g.stroke(); }
+    g.fillStyle = 'rgba(20,12,6,0.7)'; g.fillRect(0, y + h - 2, size, 2);
+  }
+  return c;
+}
+
 // ------------------------------------------------------------------ fabrique
 export function buildTextures(renderer, quality = 'high') {
   const S = quality === 'high' ? 512 : 256;
@@ -299,6 +346,14 @@ export function buildTextures(renderer, quality = 'high') {
     bark: pair(bark(S / 2), 4),
     foliage: tex(foliage(S / 2)),
     cloth: tex(cloth(S / 4)),
+    marble: pair(stoneWall(S, [236, 232, 222], [200, 194, 182], 40, 6, 16), 2.5),
+    sandstone: pair(stoneWall(S, [224, 192, 140], [184, 152, 106], 41, 7, 22), 3),
+    mudbrick: pair(stoneWall(S, [198, 150, 104], [168, 126, 86], 42, 14, 30), 2.5),
+    stucco: pair(plaster(S, [236, 210, 164], 43), 1.2),
+    whiteplaster: pair(plaster(S, [242, 238, 228], 44), 0.8),
+    ashlar: pair(ashlar(S), 4),
+    logs: pair(logs(S), 4),
+    kawara: pair(roofRows(S, 'tile', [92, 96, 106], 45), 5),
   };
   return T;
 }

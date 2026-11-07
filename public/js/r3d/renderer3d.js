@@ -12,8 +12,9 @@ import { buildTextures } from './textures.js';
 import { makeWorldUniforms, patchWorld } from './shading.js';
 import {
   buildingModel, palisadeModel, stoneWallModel, scaffoldModel, unitGeometries, unitParts, SKIN_TONES, treeGeometries,
-  rockGeometries, bushGeometries, sheepGeometries, grassTuftGeometry, arrowGeometry, makeBanner, boxGeo,
+  rockGeometries, bushGeometries, sheepGeometries, grassTuftGeometry, arrowGeometry, makeBanner, boxGeo, CIV_SKINS,
 } from './models.js';
+import { civBuildingModel, civWallMaterial } from './civstyles.js';
 
 const MAXU = 520;
 const HUMAN_SCALE = 0.78;
@@ -257,6 +258,17 @@ export class Renderer3D {
       targetWhite: this.std({ color: 0xeee6d0, roughness: 0.9 }),
       targetRed: this.std({ color: 0xb8302a, roughness: 0.9 }),
       targetGold: this.std({ color: 0xe0b840, roughness: 0.6 }),
+      marble: tm(T.marble, 0xffffff, 0.55, 0.7),
+      sandstone: tm(T.sandstone, 0xffffff, 0.9, 0.9),
+      mudbrick: tm(T.mudbrick, 0xffffff, 0.95, 0.9),
+      stucco: tm(T.stucco, 0xffffff, 0.9, 0.5),
+      whiteplaster: tm(T.whiteplaster, 0xffffff, 0.85, 0.4),
+      ashlar: tm(T.ashlar, 0xffffff, 0.9, 1.1),
+      logs: tm(T.logs, 0xffffff, 0.85, 1, { side: THREE.DoubleSide }),
+      kawara: tm(T.kawara, 0xffffff, 0.55, 1, { side: THREE.DoubleSide }),
+      blackwood: tm(T.darkwood, 0x3a302a, 0.6, 0.6),
+      paper: this.std({ map: T.cloth, color: 0xf4efe2, roughness: 0.9, emissive: 0x403020, emissiveIntensity: 0.25 }),
+      clay: this.std({ color: 0xb8673a, roughness: 0.8 }),
     };
     // matériaux d'équipe
     this.teams = this.game.players.map((p) => ({
@@ -356,12 +368,16 @@ export class Renderer3D {
     this.unitDefs = {};
     this.parts = new Map(); // clé géométrie|matériau → { mesh, n }
     const mult = new Map();
-    for (const type of Object.keys(UNITS)) {
-      const list = unitParts(type).map((pt) => ({ ...pt, key: `${pt.g}|${pt.m}`, local: mat4(...pt.p, ...pt.r, ...pt.s), fixed: typeof pt.c === 'number' ? new THREE.Color(pt.c) : null }));
-      this.unitDefs[type] = list;
-      const cnt = {};
-      for (const pt of list) cnt[pt.key] = (cnt[pt.key] || 0) + 1;
-      for (const [k, v] of Object.entries(cnt)) mult.set(k, Math.max(mult.get(k) || 0, v));
+    const civs = [...new Set(['francs', ...this.game.players.map((p) => p.civ || 'francs')])];
+    for (const civ of civs) {
+      this.unitDefs[civ] = {};
+      for (const type of Object.keys(UNITS)) {
+        const list = this.partsFor(type, civ);
+        this.unitDefs[civ][type] = list;
+        const cnt = {};
+        for (const pt of list) cnt[pt.key] = (cnt[pt.key] || 0) + 1;
+        for (const [k, v] of Object.entries(cnt)) mult.set(k, Math.max(mult.get(k) || 0, v));
+      }
     }
     for (const [key, m] of mult) {
       const [g, mt] = key.split('|');
@@ -377,8 +393,14 @@ export class Renderer3D {
     }
     this.teamColors = this.game.players.map((p) => ({ team: new THREE.Color(p.color), teamDk: new THREE.Color(p.color).multiplyScalar(0.55) }));
     this.skins = SKIN_TONES.map((c) => new THREE.Color(c));
+    this.civSkins = {};
+    for (const [civ, arr] of Object.entries(CIV_SKINS)) this.civSkins[civ] = arr.map((c) => new THREE.Color(c));
     this.bones = {};
     for (const b of ['root', 'body', 'head', 'legL', 'legR', 'armL', 'armR', 'tool', 'shield', 'back', 'hbody', 'hhead', 'hlegFL', 'hlegFR', 'hlegBL', 'hlegBR', 'tail']) this.bones[b] = new THREE.Matrix4();
+  }
+
+  partsFor(type, civ) {
+    return unitParts(type, civ).map((pt) => ({ ...pt, key: `${pt.g}|${pt.m}`, local: mat4(...pt.p, ...pt.r, ...pt.s), fixed: typeof pt.c === 'number' ? new THREE.Color(pt.c) : null }));
   }
 
   // calcule les os d'une unité dans this.bones
@@ -406,7 +428,7 @@ export class Renderer3D {
       for (const [b, lx, lz, off] of legs) B[b].copy(B.hbody).multiply(tmpM.makeTranslation(lx, -0.04, lz)).multiply(tmpM2.makeRotationX(Math.sin(ph + off) * 0.75 * walk));
       B.hhead.copy(B.hbody).multiply(tmpM.makeTranslation(0, 0.1, 0.36)).multiply(tmpM2.makeRotationX(Math.sin(ph * 2) * 0.08 * walk + (walk < 0.1 ? Math.max(0, Math.sin(t * 0.4)) * 0.4 : 0)));
       B.tail.copy(B.hbody).multiply(tmpM.makeTranslation(0, 0.12, -0.42)).multiply(tmpM2.makeRotationX(0.5 + Math.sin(t * 2.3) * 0.12)).multiply(tmpM.makeRotationZ(Math.sin(t * 1.7) * 0.15));
-      B.body.copy(B.hbody).multiply(tmpM.makeTranslation(0, 0.22, -0.03));
+      B.body.copy(B.hbody).multiply(tmpM.makeTranslation(0, type === 'chariot' ? 0.12 : 0.22, type === 'chariot' ? -0.72 : -0.03));
       B.legL.copy(B.body); B.legR.copy(B.body);
       bodyBase = null;
     } else {
@@ -424,11 +446,14 @@ export class Renderer3D {
     const sw = st.swing; // 0..1 progression de l'attaque
     const work = st.work;
     if (cls === 'cavalry') { aR = -0.6; toolA = type === 'scout' ? 1.2 : 1.45; aL = -0.7; }
+    if (type === 'chariot') { aL = -0.5; aR = -0.3; }
     if (type === 'spearman' || type === 'royal_guard') { aR = -0.35; toolA = 0.4; }
     if (type === 'archer' || type === 'crossbowman') { aL = -0.5; aR = -0.3; }
+    if (type === 'slinger') { aR = -0.2; toolA = 0.2; }
     if (sw > 0) {
       const e = sw < 0.35 ? sw / 0.35 : 1 - (sw - 0.35) / 0.65;
-      if (type === 'archer' || type === 'crossbowman' || type === 'skirmisher') { aL = -1.45; aR = -1.4 + e * 0.3; lz = e * 0.1; toolA = type === 'skirmisher' ? 1.4 - e : toolA; }
+      if (type === 'archer' || type === 'crossbowman' || type === 'skirmisher' || type === 'chariot') { aL = -1.45; aR = -1.4 + e * 0.3; lz = e * 0.1; toolA = type === 'skirmisher' ? 1.4 - e : toolA; }
+      else if (type === 'slinger') { aR = -2.6 - Math.sin(sw * Math.PI * 4) * 0.6; toolA = 0.3 + e * 2; aL = -0.4; }
       else if (type === 'spearman' || type === 'royal_guard' || (cls === 'cavalry' && type !== 'scout')) { aR = -0.9 - e * 0.8; toolA = 1.55; }
       else { aR = sw < 0.35 ? -0.4 - (sw / 0.35) * 2.4 : -2.8 + ((sw - 0.35) / 0.65) * 2.3; toolA = 1.3; aL = -0.6; }
     } else if (work > 0) {
@@ -451,12 +476,15 @@ export class Renderer3D {
     const scale = def.cls === 'siege' ? 0.85 : HUMAN_SCALE;
     this.pose(type, st, x, y, z, yaw, scale, dead);
     const tc = this.teamColors[owner] || { team: tmpC.set(0x888888), teamDk: tmpC };
-    const skin = this.skins[st.seed * 4 | 0];
+    const civ = this.civOf(owner);
+    const skin = (this.civSkins[civ] || this.skins)[st.seed * 4 | 0];
     const toolKind = st.toolKind, carry = st.carry;
-    for (const pt of this.unitDefs[type]) {
+    const defs = (this.unitDefs[civ] || this.unitDefs.francs)[type];
+    for (const pt of defs) {
       if (pt.tool && pt.tool !== toolKind) continue;
       if (pt.carry && pt.carry !== carry) continue;
       const slot = this.parts.get(pt.key);
+      if (!slot) continue;
       if (slot.n >= slot.mesh.instanceMatrix.count) continue;
       tmpM.multiplyMatrices(this.bones[pt.b], pt.local);
       slot.mesh.setMatrixAt(slot.n, tmpM);
@@ -733,12 +761,15 @@ export class Renderer3D {
     this.footBad = new THREE.MeshBasicMaterial({ color: 0xff4040, transparent: true, opacity: 0.35, depthWrite: false });
   }
 
-  template(type, owner) {
-    const key = type + owner;
+  civOf(owner) { return (this.game.players[owner] && this.game.players[owner].civ) || 'francs'; }
+
+  template(type, owner, civ = this.civOf(owner)) {
+    const key = type + owner + civ;
     let t = this.templates.get(key);
     if (!t) {
       const def = BUILDINGS[type];
-      t = buildingModel(type, def.size, this.M, this.teams[owner] || this.teams[0]);
+      const team = this.teams[owner] || this.teams[0];
+      t = civ !== 'francs' && !def.farm && !def.wall ? civBuildingModel(type, def.size, this.M, team, civ) : buildingModel(type, def.size, this.M, team);
       this.templates.set(key, t);
     }
     return t;
@@ -794,7 +825,7 @@ export class Renderer3D {
       const mask = def.wall ? this.palMask(b) : 0;
       if (e && def.wall && e.mask !== mask) { this.scene.remove(e.group); e = null; }
       if (!e) {
-        const group = def.wall ? (b.type === 'stone_wall' ? stoneWallModel(mask, this.M, this.teams[b.owner]) : palisadeModel(mask, this.M)) : this.instantiate(b.type, b.owner);
+        const group = def.wall ? (b.type === 'stone_wall' ? stoneWallModel(mask, this.M, this.teams[b.owner], civWallMaterial(this.civOf(b.owner), this.M)) : palisadeModel(mask, this.M)) : this.instantiate(b.type, b.owner);
         if (def.wall) group.userData = { anim: { banners: [] } };
         group.traverse((o) => { o.userData.entityId = b.id; });
         const base = this.baseHeight(b);
@@ -919,8 +950,9 @@ export class Renderer3D {
         if (bn >= this.balls.instanceMatrix.count) continue;
         tmpM.makeTranslation(p0.x, p0.y, p0.z);
         if (pr.kind === 'ball') tmpM.scale(tmpS.set(0.8, 0.8, 0.8));
+        if (pr.kind === 'pebble') tmpM.scale(tmpS.set(0.35, 0.35, 0.35));
         this.balls.setMatrixAt(bn++, tmpM);
-        if (Math.random() < 0.5) this.smoke.emit(p0.x, p0.y, p0.z, 0, 0.1, 0, 0.8, 0.15, 0.5, [0.6, 0.6, 0.6, 0.4], [0.6, 0.6, 0.6, 0]);
+        if (pr.kind !== 'pebble' && Math.random() < 0.5) this.smoke.emit(p0.x, p0.y, p0.z, 0, 0.1, 0, 0.8, 0.15, 0.5, [0.6, 0.6, 0.6, 0.4], [0.6, 0.6, 0.6, 0]);
       }
     }
     this.arrows.count = an; this.balls.count = bn;
@@ -1319,17 +1351,18 @@ export class Renderer3D {
     return this.ir;
   }
 
-  unitGroup(type, owner) {
+  unitGroup(type, owner, civ = this.civOf(owner)) {
     // modèle non instancié d'une unité (pour les portraits)
     const grp = new THREE.Group();
     const st = { yaw: 0, phase: 0, walk: 0, seed: 0.3, swing: 0, work: 0, lean: 0, toolKind: type === 'villager' ? 'axe' : null, carry: null };
     const def = UNITS[type];
     this.pose(type, st, 0, 0, 0, 0, def.cls === 'siege' ? 0.85 : HUMAN_SCALE);
     const tc = this.teamColors[owner] || this.teamColors[0];
-    for (const pt of this.unitDefs[type]) {
+    const skins = this.civSkins[civ] || this.skins;
+    for (const pt of this.partsFor(type, civ)) {
       if (pt.tool && pt.tool !== st.toolKind) continue;
       if (pt.carry) continue;
-      const col = pt.fixed || (pt.c === 'team' ? tc.team : pt.c === 'teamDk' ? tc.teamDk : this.skins[1]);
+      const col = pt.fixed || (pt.c === 'team' ? tc.team : pt.c === 'teamDk' ? tc.teamDk : skins[1]);
       const mat = this.UM[pt.m].clone();
       mat.onBeforeCompile = () => {};
       mat.color = col.clone();
@@ -1341,15 +1374,16 @@ export class Renderer3D {
     return grp;
   }
 
-  icon(kind, type, color) {
+  icon(kind, type, color, civOverride = null) {
     this.icons = this.icons || new Map();
-    const key = kind + type + color;
+    const key = kind + type + color + (civOverride || '');
     if (this.icons.has(key)) return this.icons.get(key);
     const { r, scene, camera, cv } = this.iconRenderer();
     const owner = Math.max(0, this.game.players.findIndex((p) => p.color === color));
+    const civ = civOverride || this.civOf(owner);
     let obj;
     if (kind === 'unit') {
-      obj = this.unitGroup(type, owner);
+      obj = this.unitGroup(type, owner, civ);
       const cls = UNITS[type].cls;
       const box = new THREE.Box3().setFromObject(obj);
       const ctr = box.getCenter(new THREE.Vector3()), size = box.getSize(new THREE.Vector3());
@@ -1359,7 +1393,7 @@ export class Renderer3D {
       camera.lookAt(ctr.x, ctr.y + (cls === 'cavalry' ? 0.05 : 0.08), ctr.z);
     } else {
       const def = BUILDINGS[type];
-      obj = def.wall ? (type === 'stone_wall' ? stoneWallModel(4, this.M, this.teams[owner]) : palisadeModel(3, this.M)) : this.template(type, owner).clone(true);
+      obj = def.wall ? (type === 'stone_wall' ? stoneWallModel(4, this.M, this.teams[owner], civWallMaterial(civ, this.M)) : palisadeModel(3, this.M)) : this.template(type, owner, civ).clone(true);
       if (def.farm) {
         const crops = new THREE.InstancedMesh(this.cropMesh.geometry, this.std({ vertexColors: true, side: THREE.DoubleSide, color: 0xd8c060 }), 64);
         let k = 0;

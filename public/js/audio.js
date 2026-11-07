@@ -8,6 +8,9 @@ const MODES = {
   phrygian: [0, 1, 3, 5, 7, 8, 10],
   ionian: [0, 2, 4, 5, 7, 9, 11],
   mixolydian: [0, 2, 4, 5, 7, 9, 10],
+  hijaz: [0, 1, 4, 5, 7, 8, 10],
+  pentaMinor: [0, 3, 5, 7, 10],
+  inScale: [0, 1, 5, 7, 8],
 };
 
 function rng(seed) {
@@ -197,6 +200,8 @@ export class AudioEngine {
     this.transition();
   }
   setPhase(age) { this.age = age; }
+  // gammes propres à la civilisation du joueur
+  setCiv(modes) { this.civModes = modes && modes.length ? modes : null; }
   combat(amount = 1) { this.tension = Math.min(10, this.tension + amount); }
 
   pickStyle() {
@@ -246,9 +251,11 @@ export class AudioEngine {
     const bpm = S.bpm[0] + r() * (S.bpm[1] - S.bpm[0]);
     const st = 60 / bpm / 4; // double-croche
     const bar = st * 16;
-    const mode = MODES[pick(S.modes)];
+    const useCiv = this.civModes && style !== 'victory' && style !== 'defeat';
+    const mode = MODES[pick(useCiv ? this.civModes : S.modes)] || MODES.aeolian;
     const root = pick(S.roots);
-    const deg = (d, oct = 0) => { const o = Math.floor(d / 7), i = ((d % 7) + 7) % 7; return root + mode[i] + 12 * (o + oct); };
+    const N = mode.length;
+    const deg = (d, oct = 0) => { const o = Math.floor(d / N), i = ((d % N) + N) % N; return root + mode[i] + 12 * (o + oct); };
     if (this.delayL) { const dtm = st * 3; this.delayL.delayTime.setValueAtTime(dtm, start); this.delayR.delayTime.setValueAtTime(dtm, start); }
     const ev = [];
     const at = (t, fn) => ev.push({ t, fn });

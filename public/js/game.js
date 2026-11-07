@@ -1,7 +1,7 @@
 // Moteur de simulation du jeu (sans DOM : utilisable dans le navigateur et dans Node).
 import {
   UNITS, BUILDINGS, TECHS, AGES, RESOURCE_DEFS, GATHER_RATE, RESOURCES, TERRAIN, REACH,
-  PLAYER_COLORS, PLAYER_NAMES, MAX_POP, defaultMods,
+  PLAYER_COLORS, PLAYER_NAMES, MAX_POP, defaultMods, CIVS, CIV_IDS,
 } from './config.js';
 import { PathFinder, distToRect } from './pathfinding.js';
 import { generateMap, mulberry32 } from './map.js';
@@ -9,7 +9,7 @@ import { generateMap, mulberry32 } from './map.js';
 const SCAN_INTERVAL = 0.5;
 
 export class Game {
-  constructor({ seed = Date.now() % 1e9, size = 96, players = 2, humanPlayer = 0, startRes } = {}) {
+  constructor({ seed = Date.now() % 1e9, size = 96, players = 2, humanPlayer = 0, startRes, civs = [] } = {}) {
     this.seed = seed;
     this.rand = mulberry32(seed);
     this.time = 0;
@@ -41,11 +41,14 @@ export class Game {
     this.pathfinder = new PathFinder(this.map);
     this.players = [];
     for (let i = 0; i < players; i++) {
+      const civ = CIVS[civs[i]] ? civs[i] : CIV_IDS[i % CIV_IDS.length];
+      const mods = defaultMods();
+      CIVS[civ].apply(mods);
       this.players.push({
-        id: i, name: PLAYER_NAMES[i], color: PLAYER_COLORS[i], isHuman: i === humanPlayer,
+        id: i, name: CIVS[civ].realm || PLAYER_NAMES[i], civ, color: PLAYER_COLORS[i], isHuman: i === humanPlayer,
         res: { ...(startRes || { food: 200, wood: 200, gold: 100, stone: 200 }) },
         age: 0, agingUp: false, techs: new Set(), researching: new Set(),
-        mods: defaultMods(), statCache: {}, pop: 0, popCap: 0,
+        mods, statCache: {}, pop: 0, popCap: 0,
         explored: new Uint8Array(n), visible: new Uint8Array(n),
         defeated: false, lastAttackAlert: -99,
         stats: { gathered: { food: 0, wood: 0, gold: 0, stone: 0 }, kills: 0, losses: 0, trained: 0, built: 0, razed: 0 },
@@ -170,6 +173,8 @@ export class Game {
       if (d.range > 0) s.range += m.range[d.cls] || 0;
       if (m.armor[d.cls]) { s.armor[0] += m.armor[d.cls][0]; s.armor[1] += m.armor[d.cls][1]; }
     }
+    s.rof *= m.rof[d.cls] || 1;
+    s.speed *= m.speed[d.cls] || 1;
     p.statCache[type] = s;
     return s;
   }
@@ -438,6 +443,7 @@ export class Game {
     const def = UNITS[type];
     if (!b || b.owner !== owner || !b.built || !def || def.from !== b.type) return false;
     if (!this.hasAge(p, def.age)) return false;
+    if (def.civ && def.civ !== p.civ) return false;
     let n = 0;
     for (let i = 0; i < count; i++) {
       if (b.queue.length >= 10) break;
@@ -978,7 +984,7 @@ export class Game {
 
   recomputePopCap(p) {
     let cap = 0;
-    for (const b of this.buildings) if (!b.dead && b.owner === p.id && b.built) cap += BUILDINGS[b.type].pop || 0;
+    for (const b of this.buildings) if (!b.dead && b.owner === p.id && b.built) cap += (BUILDINGS[b.type].pop || 0) + (b.type === 'house' ? p.mods.housePop : 0);
     p.popCap = Math.min(MAX_POP, cap);
   }
 

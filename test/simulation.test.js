@@ -42,6 +42,24 @@ test('partie avec joueur humain (brouillard actif) sans erreur', () => {
   assert.ok(g.units.filter((u) => u.owner === 1).length > 8);
 });
 
+test('chaque civilisation peut jouer une partie et former son unité unique', async () => {
+  const { CIVS, CIV_IDS } = await import('../public/js/config.js');
+  for (let k = 0; k < CIV_IDS.length; k += 2) {
+    const civs = [CIV_IDS[k], CIV_IDS[k + 1]];
+    const g = new Game({ seed: 10 + k, size: 72, players: 2, humanPlayer: -1, civs, startRes: { food: 5000, wood: 5000, gold: 5000, stone: 5000 } });
+    assert.deepEqual(g.players.map((p) => p.civ), civs);
+    const ais = g.players.map((p) => new AI(g, p.id, 'difficile'));
+    for (let i = 0; i < 240 / TICK; i++) { for (const ai of ais) ai.update(TICK); g.update(TICK); }
+    for (const p of g.players) {
+      p.age = 2;
+      const f = g.createBuilding('fortress', p.id, 2 + p.id * 30, 2, true);
+      assert.ok(g.issue(p.id, { type: 'train', building: f.id, unit: CIVS[p.civ].unique }), `${p.civ} forme son unité unique`);
+      const other = CIV_IDS.find((c) => c !== p.civ);
+      assert.equal(g.issue(p.id, { type: 'train', building: f.id, unit: CIVS[other].unique }), false, 'pas d’unité unique d’une autre civilisation');
+    }
+  }
+});
+
 for (const seed of [1, 2, 3]) {
   test(`IA contre IA (graine ${seed}) : progression économique et militaire`, () => {
     const g = simulate(seed, 16 * 60);

@@ -4,7 +4,7 @@ import { AI } from './ai.js';
 import { Renderer } from './render.js';
 import { UI } from './ui.js';
 import { AudioEngine } from './audio.js';
-import { TICK } from './config.js';
+import { TICK, CIVS, CIV_IDS, UNITS } from './config.js';
 import { Renderer3D, webglAvailable } from './r3d/renderer3d.js';
 import { resIconURL, icon } from './icons.js';
 
@@ -42,8 +42,32 @@ function makeRenderer(game, me, q, canvas) {
 }
 
 // ------------------------------------------------------------------ démonstration du menu
+// ------------------------------------------------------------------ civilisations
+const civSel = $('opt-civ'), civAiSel = $('opt-civ-ai');
+for (const sel of [civSel, civAiSel]) {
+  sel.innerHTML = '<option value="random">Aléatoire</option>' + CIV_IDS.map((id) => `<option value="${id}">${CIVS[id].name}</option>`).join('');
+}
+try { civSel.value = localStorage.getItem('adr_civ') || 'francs'; } catch { civSel.value = 'francs'; }
+civAiSel.value = 'random';
+const pickCiv = (v, not) => (v === 'random' ? CIV_IDS.filter((c) => c !== not)[Math.floor(Math.random() * (CIV_IDS.length - 1))] : v);
+
+function updateCivCard() {
+  const id = civSel.value;
+  const card = $('civ-card');
+  if (id === 'random') { card.innerHTML = '<div><h4>Civilisation aléatoire</h4><p>Une des six civilisations sera tirée au sort au lancement de la partie.</p></div>'; return; }
+  const c = CIVS[id];
+  let pics = '';
+  if (demo && demo.renderer.icon) {
+    const color = demo.game.players[0].color;
+    try { pics = `<div class="pics"><img src="${demo.renderer.icon('building', 'town_center', color, id)}" alt=""><img src="${demo.renderer.icon('unit', c.unique, color, id)}" alt=""></div>`; } catch { pics = ''; }
+  }
+  card.innerHTML = `${pics}<div><h4>${c.name}</h4><p>${c.desc}</p><p><b>Bonus :</b> ${c.bonus}</p><p><b>Unité unique :</b> ${UNITS[c.unique].name} — ${UNITS[c.unique].desc.replace(/^Unité unique [^:]+: /, '')}</p></div>`;
+}
+civSel.addEventListener('change', () => { try { localStorage.setItem('adr_civ', civSel.value); } catch { /* ignore */ } updateCivCard(); });
+
 function startDemo() {
-  const game = new Game({ seed: Math.floor(Math.random() * 1e9), size: 72, players: 2, humanPlayer: -1 });
+  const dc = [...CIV_IDS].sort(() => Math.random() - 0.5);
+  const game = new Game({ seed: Math.floor(Math.random() * 1e9), size: 72, players: 2, humanPlayer: -1, civs: [dc[0], dc[1]] });
   for (const p of game.players) { p.explored.fill(1); p.visible.fill(1); }
   const ais = game.players.map((p) => new AI(game, p.id, 'difficile'));
   for (let i = 0; i < 20 * 200; i++) { ais.forEach((a) => a.update(TICK)); game.update(TICK); }
@@ -57,6 +81,7 @@ function startDemo() {
   demo.onResize = () => renderer.resize();
   window.addEventListener('resize', demo.onResize);
   requestAnimationFrame(demoLoop);
+  setTimeout(updateCivCard, 50);
 }
 
 function demoLoop(now) {
@@ -74,6 +99,7 @@ function demoLoop(now) {
   d.game.events.length = 0;
   d.renderer.draw(Math.min(1, d.acc / TICK), d.ui);
   requestAnimationFrame(demoLoop);
+  setTimeout(updateCivCard, 50);
 }
 
 function stopDemo() {
@@ -94,12 +120,13 @@ function start() {
   const rich = $('opt-res').value === 'riche';
   const difficulty = $('opt-diff').value;
   const q = quality();
+  const myCiv = pickCiv(civSel.value), aiCiv = pickCiv(civAiSel.value, myCiv);
   $('loading').classList.remove('hidden');
   // laisse le navigateur afficher l'écran de chargement
   setTimeout(() => {
     stopDemo();
     const game = new Game({
-      seed, size, players: 2, humanPlayer: 0,
+      seed, size, players: 2, humanPlayer: 0, civs: [myCiv, aiCiv],
       startRes: rich ? { food: 1000, wood: 1000, gold: 800, stone: 600 } : undefined,
     });
     game.sound = true;
@@ -120,7 +147,8 @@ function start() {
     ui.setupMinimap();
     const tc = game.buildings.find((b) => b.owner === 0);
     ui.selected = new Set([tc.id]);
-    ui.msg(`Bienvenue ! Carte n°${seed}. Formez des villageois et développez votre royaume.`, 'good');
+    ui.msg(`${CIVS[myCiv].realm} contre ${CIVS[aiCiv].realm} — carte n°${seed}. Bonne partie !`, 'good');
+    audio.setCiv(CIVS[myCiv].music);
     audio.setScene('peace');
     requestAnimationFrame((t) => loop(state, t));
     window.__game = state; // pratique pour le débogage dans la console

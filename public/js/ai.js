@@ -1,5 +1,5 @@
 // Intelligence artificielle de l'adversaire. Elle utilise les mêmes commandes que le joueur.
-import { UNITS, BUILDINGS, TECHS, AGES } from './config.js';
+import { UNITS, BUILDINGS, TECHS, AGES, CIVS } from './config.js';
 
 const DIFFICULTY = {
   facile: { gather: 0.8, firstAttack: 720, think: 2.0, maxVil: 30, wave: 6 },
@@ -343,7 +343,7 @@ export class AI {
         if (sieges >= 4) continue;
         pick = sieges % 2 === 0 ? 'ram' : (p.age >= 3 ? 'bombard' : 'mangonel');
       }
-      if (b.type === 'fortress') pick = 'royal_guard';
+      if (b.type === 'fortress') pick = CIVS[p.civ].unique;
       if (!pick) continue;
       if (this.army.length > 60) continue;
       if (this.spare(UNITS[pick].cost)) this.issue({ type: 'train', building: b.id, unit: pick });

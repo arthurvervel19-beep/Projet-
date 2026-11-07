@@ -33,6 +33,18 @@ Ouvrez ensuite <http://localhost:3000> dans votre navigateur. Pour changer de po
   récolte) : fantassins, archers, cavaliers, engins de siège. Portraits 3D dans l'interface.
 - **4 qualités graphiques** : Ultra, Équilibrée, Performance (3D) et Classique (2D, utilisée
   automatiquement si WebGL 2 n'est pas disponible).
+- **6 civilisations** jouables, chacune avec son architecture, l'apparence de ses unités,
+  un bonus, une unité unique (formée à la forteresse) et des gammes musicales propres :
+
+  | Civilisation | Architecture | Bonus | Unité unique |
+  |---|---|---|---|
+  | Francs | pierre, colombages, tuiles, château fort | cavalerie +20 PV, fermes +40 nourriture | Garde royale |
+  | Romains | marbre, colonnades, temple à fronton | infanterie +1/+1 armure, bâtiments +15 % PV | Légionnaire |
+  | Égyptiens | grès, pylônes, obélisques, toits plats | or et pierre +20 % | Char de guerre |
+  | Incas | pierres ajustées, plateforme à degrés, chaume | villageois +1/+1 armure, maisons +3 pop. | Frondeur |
+  | Japonais | bois sombre, cloisons blanches, château à étages | infanterie attaque 20 % plus vite, bois +15 % | Samouraï |
+  | Vikings | rondins, grande halle, proues de dragon | infanterie +15 % vitesse, villageois +10 PV | Berserker |
+
 - **Carte procédurale** : lacs, plages, forêts, filons d'or et de pierre, baies, moutons.
 - **4 ressources**, **4 âges**, **16 bâtiments** (dont palissade et muraille de pierre à
   tracer en cliquant-glissant, avec tours automatiques aux angles), **15 unités**,
@@ -71,7 +83,7 @@ public/js/map.js     génération procédurale de la carte
 public/js/pathfinding.js  A* 8 directions avec lissage des trajets
 public/js/game.js    moteur de simulation (sans DOM, testable dans Node)
 public/js/ai.js      intelligence artificielle
-public/js/r3d/       rendu 3D : moteur, shaders, modèles, textures procédurales
+public/js/r3d/       rendu 3D : moteur, shaders, modèles, styles des civilisations, textures
 public/js/render.js  rendu 2D « classique » (repli sans WebGL)
 public/js/terrain.js champs du terrain et couleurs (minicarte, rendu 2D)
 public/js/sprites.js sprites du rendu 2D

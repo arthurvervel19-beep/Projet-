@@ -50,6 +50,12 @@
       <p class="sub">Stratégie en temps réel — bâtissez, récoltez, conquérez.</p>
       <div class="divider"></div>
       <div class="form">
+        <label>Votre civilisation
+          <select id="opt-civ"></select>
+        </label>
+        <label>Civilisation adverse
+          <select id="opt-civ-ai"></select>
+        </label>
         <label>Difficulté de l'adversaire
           <select id="opt-diff">
             <option value="facile">Facile</option>
@@ -82,6 +88,7 @@
           <input id="opt-seed" type="number" placeholder="aléatoire">
         </label>
       </div>
+      <div id="civ-card" class="civ-card"></div>
       <button id="start-btn" class="big">Lancer la partie</button>
       <details>
         <summary>Commandes</summary>

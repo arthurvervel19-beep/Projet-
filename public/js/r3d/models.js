@@ -8,7 +8,7 @@ function prng(seed) {
 }
 
 // ------------------------------------------------------------------ géométries de base
-function scaleUV(g, su, sv) {
+export function scaleUV(g, su, sv) {
   const uv = g.attributes.uv;
   for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * su, uv.getY(i) * sv);
   return g;
@@ -25,18 +25,18 @@ export function boxGeo(w, h, d, den = 1) {
   return g;
 }
 
-function cylGeo(rt, rb, h, seg = 14, den = 1, open = false) {
+export function cylGeo(rt, rb, h, seg = 14, den = 1, open = false) {
   const g = new THREE.CylinderGeometry(rt, rb, h, seg, 1, open);
   return scaleUV(g, Math.PI * (rt + rb) * den, h * den);
 }
 
-function coneGeo(r, h, seg = 14, den = 1) {
+export function coneGeo(r, h, seg = 14, den = 1) {
   const g = new THREE.ConeGeometry(r, h, seg, 1, true);
   return scaleUV(g, Math.PI * 2 * r * den, Math.hypot(r, h) * den);
 }
 
 // toit à deux pans (faîtage selon x), base à y=0
-function gableGeo(w, d, h, den = 1) {
+export function gableGeo(w, d, h, den = 1) {
   const x0 = -w / 2, x1 = w / 2, z0 = -d / 2, z1 = d / 2;
   const slope = Math.hypot(d / 2, h);
   const pos = [], uv = [];
@@ -59,7 +59,7 @@ function gableGeo(w, d, h, den = 1) {
 }
 
 // pignon seul (triangle plein, pour le mur sous le toit)
-function gableEndGeo(d, h, den = 1) {
+export function gableEndGeo(d, h, den = 1) {
   const pos = [0, 0, d / 2, 0, 0, -d / 2, 0, h, 0];
   const g = new THREE.BufferGeometry();
   g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
@@ -68,7 +68,7 @@ function gableEndGeo(d, h, den = 1) {
   return g;
 }
 
-function pyramidGeo(w, d, h, den = 1) {
+export function pyramidGeo(w, d, h, den = 1) {
   const g = new THREE.ConeGeometry(Math.SQRT1_2, 1, 4, 1, true);
   g.rotateY(Math.PI / 4);
   g.scale(w, h, d);
@@ -78,7 +78,7 @@ function pyramidGeo(w, d, h, den = 1) {
   return g;
 }
 
-function displaced(geo, amt, seed, freq = 3) {
+export function displaced(geo, amt, seed, freq = 3) {
   const r = prng(seed);
   const off = [r() * 10, r() * 10, r() * 10];
   void r;
@@ -94,7 +94,7 @@ function displaced(geo, amt, seed, freq = 3) {
   return geo;
 }
 
-function colorize(geo, fn) {
+export function colorize(geo, fn) {
   const p = geo.attributes.position, c = new Float32Array(p.count * 3);
   for (let i = 0; i < p.count; i++) { const [r, g, b] = fn(p.getX(i), p.getY(i), p.getZ(i)); c[i * 3] = r; c[i * 3 + 1] = g; c[i * 3 + 2] = b; }
   geo.setAttribute('color', new THREE.BufferAttribute(c, 3));
@@ -118,7 +118,7 @@ export function merge(list, withColor = false) {
 }
 
 // ------------------------------------------------------------------ assembleur de bâtiments
-class Builder {
+export class Builder {
   constructor(M) { this.M = M; this.byMat = new Map(); this.extra = []; }
   add(geo, mat, x = 0, y = 0, z = 0, ry = 0, rx = 0, rz = 0) {
     const g = geo.clone();
@@ -155,7 +155,7 @@ class Builder {
 }
 
 // Mur à colombages : enduit + poutres sur les faces visibles
-function timberWalls(B, M, cx, cz, w, h, d, y0, windows = []) {
+export function timberWalls(B, M, cx, cz, w, h, d, y0, windows = []) {
   const t = 0.055;
   B.box(w, h, d, M.plaster, cx, y0, cz);
   const x0 = cx - w / 2, x1 = cx + w / 2, z0 = cz - d / 2, z1 = cz + d / 2;
@@ -182,7 +182,7 @@ function timberWalls(B, M, cx, cz, w, h, d, y0, windows = []) {
 }
 
 // fenêtre : encadrement + vitre chaude
-function addWindow(B, M, { x, y, z, face, w = 0.16, h = 0.2 }) {
+export function addWindow(B, M, { x, y, z, face, w = 0.16, h = 0.2 }) {
   const ry = face === 'x' ? Math.PI / 2 : 0;
   const dx = face === 'x' ? 0.015 : 0, dz = face === 'z' ? 0.015 : 0;
   B.box(w + 0.06, h + 0.06, 0.03, M.beam, x + dx * 0.5, y - 0.03, z + dz * 0.5, ry);
@@ -190,7 +190,7 @@ function addWindow(B, M, { x, y, z, face, w = 0.16, h = 0.2 }) {
   B.box(0.02, h, 0.035, M.beam, x + dx * 1.4, y, z + dz * 1.4, ry);
 }
 
-function addDoor(B, M, { x, y, z, face, w = 0.28, h = 0.46 }) {
+export function addDoor(B, M, { x, y, z, face, w = 0.28, h = 0.46 }) {
   const ry = face === 'x' ? Math.PI / 2 : 0;
   const dx = face === 'x' ? 0.02 : 0, dz = face === 'z' ? 0.02 : 0;
   B.box(w + 0.08, h + 0.05, 0.04, M.darkstone, x + dx * 0.4, y, z + dz * 0.4, ry);
@@ -201,7 +201,7 @@ function addDoor(B, M, { x, y, z, face, w = 0.28, h = 0.46 }) {
   B.add(arch, M.door, x + dx, y + h, z + dz);
 }
 
-function crenels(B, mat, cx, cz, w, d, y, size = 0.14) {
+export function crenels(B, mat, cx, cz, w, d, y, size = 0.14) {
   const n = Math.max(2, Math.round(w / (size * 2))), m = Math.max(2, Math.round(d / (size * 2)));
   for (let i = 0; i <= n; i += 1) {
     if (i % 2) continue;
@@ -217,14 +217,14 @@ function crenels(B, mat, cx, cz, w, d, y, size = 0.14) {
   }
 }
 
-function roundCrenels(B, mat, cx, cz, r, y, n = 10, size = 0.12) {
+export function roundCrenels(B, mat, cx, cz, r, y, n = 10, size = 0.12) {
   for (let i = 0; i < n; i++) {
     const a = i / n * Math.PI * 2;
     B.box(size, size * 1.2, size * 0.8, mat, cx + Math.cos(a) * r, y, cz + Math.sin(a) * r, -a);
   }
 }
 
-function gableRoof(B, mat, cx, cz, w, d, y, h, alongZ = false, fascia = null) {
+export function gableRoof(B, mat, cx, cz, w, d, y, h, alongZ = false, fascia = null) {
   const g = gableGeo(w, d, h, 1.2);
   B.add(g, mat, cx, y, cz, alongZ ? Math.PI / 2 : 0);
   if (fascia) {
@@ -233,7 +233,7 @@ function gableRoof(B, mat, cx, cz, w, d, y, h, alongZ = false, fascia = null) {
   }
 }
 
-function gableWall(B, mat, cx, cz, w, d, y, h, alongZ = false) {
+export function gableWall(B, mat, cx, cz, w, d, y, h, alongZ = false) {
   for (const end of [1, -1]) {
     const g = gableEndGeo(d - 0.02, h - 0.03, 1);
     if (alongZ) g.rotateY(Math.PI / 2);
@@ -260,18 +260,18 @@ export function makeBanner(M, team, h = 0.9, w = 0.42, ht = 0.3) {
   return grp;
 }
 
-function barrel(B, M, x, z, y = 0) {
+export function barrel(B, M, x, z, y = 0) {
   B.add(cylGeo(0.1, 0.09, 0.26, 10, 2), M.planks, x, y + 0.13, z);
   B.add(cylGeo(0.105, 0.105, 0.025, 10), M.metal, x, y + 0.05, z);
   B.add(cylGeo(0.105, 0.105, 0.025, 10), M.metal, x, y + 0.21, z);
 }
 
-function crate(B, M, x, z, y = 0, s = 0.22) {
+export function crate(B, M, x, z, y = 0, s = 0.22) {
   B.box(s, s, s, M.planks, x, y, z, 0.3);
   B.box(s + 0.01, 0.025, s + 0.01, M.beam, x, y + s - 0.025, z, 0.3);
 }
 
-function logPile(B, M, x, z, n = 9) {
+export function logPile(B, M, x, z, n = 9) {
   let k = 0;
   for (let row = 0; row < 3 && k < n; row++) {
     for (let i = 0; i < 4 - row && k < n; i++, k++) {
@@ -281,12 +281,12 @@ function logPile(B, M, x, z, n = 9) {
   }
 }
 
-function hay(B, M, x, z, ry = 0) {
+export function hay(B, M, x, z, ry = 0) {
   const g = cylGeo(0.16, 0.16, 0.34, 12, 2); g.rotateZ(Math.PI / 2);
   B.add(g, M.straw, x, 0.16, z, ry);
 }
 
-function fence(B, M, pts, h = 0.32) {
+export function fence(B, M, pts, h = 0.32) {
   for (let i = 0; i < pts.length - 1; i++) {
     const [ax, az] = pts[i], [bx, bz] = pts[i + 1];
     const len = Math.hypot(bx - ax, bz - az), n = Math.max(1, Math.round(len / 0.45));
@@ -611,8 +611,9 @@ export function palisadeModel(mask, M) {
 }
 
 // muraille de pierre : segments crénelés, contreforts et tours aux angles (masque 4 bits)
-export function stoneWallModel(mask, M, team) {
+export function stoneWallModel(mask, M, team, wallMat = null) {
   const B = new Builder(M);
+  const STONE = wallMat || M.darkstone;
   const dirs = [[1, 0], [-1, 0], [0, 1], [0, -1]];
   const n = [0, 1, 2, 3].filter((i) => mask & (1 << i)).length;
   const straight = (mask === 3 || mask === 12);
@@ -620,7 +621,7 @@ export function stoneWallModel(mask, M, team) {
   if (straight) {
     const alongX = mask === 3;
     const w = alongX ? 1.02 : T, d = alongX ? T : 1.02;
-    B.box(w, H + 0.4, d, M.darkstone, 0.5, -0.4, 0.5);
+    B.box(w, H + 0.4, d, STONE, 0.5, -0.4, 0.5);
     band(w + 0.02, d + 0.02, 0.5, 0.5);
     // chemin de ronde et créneaux des deux côtés
     for (let k = 0; k < 4; k++) {
@@ -628,13 +629,13 @@ export function stoneWallModel(mask, M, team) {
       const o = -0.5 + (k + 0.5) / 4;
       for (const side of [-1, 1]) {
         const x = alongX ? 0.5 + o : 0.5 + side * (T / 2 - 0.06), z = alongX ? 0.5 + side * (T / 2 - 0.06) : 0.5 + o;
-        B.box(alongX ? 0.2 : 0.12, 0.18, alongX ? 0.12 : 0.2, M.darkstone, x, H, z);
+        B.box(alongX ? 0.2 : 0.12, 0.18, alongX ? 0.12 : 0.2, STONE, x, H, z);
       }
     }
     // contrefort côté extérieur
     for (const side of [-1, 1]) {
       const x = alongX ? 0.5 : 0.5 + side * (T / 2 + 0.06), z = alongX ? 0.5 + side * (T / 2 + 0.06) : 0.5;
-      B.box(alongX ? 0.22 : 0.14, H * 0.85, alongX ? 0.14 : 0.22, M.darkstone, x, 0, z);
+      B.box(alongX ? 0.22 : 0.14, H * 0.85, alongX ? 0.14 : 0.22, STONE, x, 0, z);
       band(alongX ? 0.24 : 0.16, alongX ? 0.16 : 0.24, x, z);
     }
   } else {
@@ -643,12 +644,12 @@ export function stoneWallModel(mask, M, team) {
     for (let i = 0; i < 4; i++) {
       if (!(mask & (1 << i))) continue;
       const [dx, dz] = dirs[i];
-      B.box(Math.abs(dx) ? 0.55 : T, H + 0.4, Math.abs(dz) ? 0.55 : T, M.darkstone, 0.5 + dx * 0.25, -0.4, 0.5 + dz * 0.25);
+      B.box(Math.abs(dx) ? 0.55 : T, H + 0.4, Math.abs(dz) ? 0.55 : T, STONE, 0.5 + dx * 0.25, -0.4, 0.5 + dz * 0.25);
       band(Math.abs(dx) ? 0.56 : T + 0.02, Math.abs(dz) ? 0.56 : T + 0.02, 0.5 + dx * 0.25, 0.5 + dz * 0.25);
     }
-    B.add(cylGeo(R, R + 0.05, H + 0.9, 14, 1.3), M.darkstone, 0.5, (H + 0.9) / 2 - 0.2, 0.5);
-    B.add(cylGeo(R + 0.08, R + 0.08, 0.12, 14), M.darkstone, 0.5, H + 0.72, 0.5);
-    roundCrenels(B, M.darkstone, 0.5, 0.5, R + 0.04, H + 0.78, 10, 0.13);
+    B.add(cylGeo(R, R + 0.05, H + 0.9, 14, 1.3), STONE, 0.5, (H + 0.9) / 2 - 0.2, 0.5);
+    B.add(cylGeo(R + 0.08, R + 0.08, 0.12, 14), STONE, 0.5, H + 0.72, 0.5);
+    roundCrenels(B, STONE, 0.5, 0.5, R + 0.04, H + 0.78, 10, 0.13);
     B.add(cylGeo(R + 0.062, R + 0.062, 0.09, 14), team.cloth, 0.5, 0.27, 0.5);
     B.add(cylGeo(R + 0.09, R + 0.09, 0.06, 14), team.cloth, 0.5, H + 0.62, 0.5);
     for (const a of [0.8, 2.4]) B.box(0.05, 0.22, 0.02, M.slit, 0.5 + Math.cos(a) * (R + 0.01), H * 0.55, 0.5 + Math.sin(a) * (R + 0.01), -a + Math.PI / 2);
@@ -695,11 +696,19 @@ export function unitGeometries() {
   })();
   const blade = (() => { const g = new THREE.BoxGeometry(1, 1, 1); return g; })();
   const wool = displaced(new THREE.IcosahedronGeometry(0.5, 2), 0.13, 77, 9);
-  return { cap, sph, hemi, cyl, taper, cone, box, bow, disc, kite, blade, wool };
+  const dodec = new THREE.DodecahedronGeometry(0.5, 0);
+  const ring = new THREE.TorusGeometry(0.5, 0.14, 6, 20);
+  const hook = new THREE.TorusGeometry(0.5, 0.06, 5, 12, Math.PI * 0.6);
+  const wheel = new THREE.TorusGeometry(0.5, 0.08, 6, 16);
+  return { cap, sph, hemi, cyl, taper, cone, box, bow, disc, kite, blade, wool, dodec, ring, hook, wheel };
 }
 
 // Couleurs
 const SKIN = [0xe2b48c, 0xc89870, 0xf0c8a0, 0xa87858];
+export const CIV_SKINS = {
+  francs: SKIN, romains: [0xd8a880, 0xc89870, 0xe0b490, 0xb88860], egyptiens: [0xb07850, 0x9a6844, 0xa87048, 0x8a5a38],
+  incas: [0xa87048, 0x986040, 0xb07a50, 0x8a5838], japonais: [0xe8c8a0, 0xdcb890, 0xf0d2aa, 0xd0a880], vikings: [0xf0d0b8, 0xe8c4a8, 0xf4dac4, 0xe0b898],
+};
 const C = {
   tunic: 0x8a6a45, brown: 0x5a3d26, leather: 0x6b4a2e, metal: 0xb8bec6, darkmetal: 0x6e747c, wood: 0x7a5232,
   straw: 0xd8b860, boot: 0x3a2a1c, rope: 0x8a7a5a, gold: 0xe8c050, white: 0xeeeeea, horseB: 0x6b4426, horseD: 0x3a2618,
@@ -738,10 +747,12 @@ function humanBase(opt) {
   return parts;
 }
 
-export function unitParts(type) {
+export function unitParts(type, civ = 'francs') {
   const parts = [];
   const add = (...a) => parts.push(...a);
+  const CV = civ !== 'francs' ? CIV_GEAR[civ] : null;
   const helmet = (style = 'cap') => {
+    if (CV) return CV.helmet(style, add, type);
     if (style === 'cap') add(P('hemi', 'metal', C.metal, 'head', [0, 0.13, 0], [0.23, 0.22, 0.23]));
     if (style === 'nasal') { add(P('hemi', 'metal', C.metal, 'head', [0, 0.13, 0], [0.23, 0.26, 0.23])); add(P('box', 'metal', C.metal, 'head', [0, 0.1, 0.11], [0.025, 0.1, 0.02])); }
     if (style === 'great') { add(P('cyl', 'metal', C.metal, 'head', [0, 0.12, 0], [0.24, 0.26, 0.24])); add(P('box', 'metal', C.iron, 'head', [0, 0.13, 0.12], [0.16, 0.025, 0.02])); }
@@ -751,14 +762,17 @@ export function unitParts(type) {
     if (style === 'hair') add(P('hemi', 'cloth', C.hair, 'head', [0, 0.12, -0.01], [0.215, 0.18, 0.215]));
   };
   const plume = (c = 'team') => add(P('cone', 'cloth', c, 'head', [0, 0.36, -0.04], [0.06, 0.18, 0.12], [-0.4, 0, 0]));
-  const sword = (len = 0.38) => { add(P('blade', 'metal', C.metal, 'tool', [0, len / 2 + 0.05, 0], [0.035, len, 0.012])); add(P('box', 'metal', C.gold, 'tool', [0, 0.05, 0], [0.12, 0.02, 0.03])); add(P('cyl', 'leather', C.leather, 'tool', [0, -0.01, 0], [0.025, 0.1, 0.025])); };
-  const roundShield = (c = 'team') => { add(P('disc', 'wood', c, 'shield', [0, 0, 0], [0.26, 0.03, 0.26], [Math.PI / 2, 0, 0])); add(P('sph', 'metal', C.metal, 'shield', [0, 0, 0.02], [0.06, 0.06, 0.04])); };
-  const kiteShield = (c = 'team') => add(P('kite', 'wood', c, 'shield', [0, -0.02, 0], [0.24, 0.34, 0.25]));
+  const sword = (len = 0.38) => {
+    if (CV && CV.sword) return CV.sword(len, add, type); add(P('blade', 'metal', C.metal, 'tool', [0, len / 2 + 0.05, 0], [0.035, len, 0.012])); add(P('box', 'metal', C.gold, 'tool', [0, 0.05, 0], [0.12, 0.02, 0.03])); add(P('cyl', 'leather', C.leather, 'tool', [0, -0.01, 0], [0.025, 0.1, 0.025])); };
+  const roundShield = (c = 'team') => {
+    if (CV && CV.shield) return CV.shield(c, add, type, 'round'); add(P('disc', 'wood', c, 'shield', [0, 0, 0], [0.26, 0.03, 0.26], [Math.PI / 2, 0, 0])); add(P('sph', 'metal', C.metal, 'shield', [0, 0, 0.02], [0.06, 0.06, 0.04])); };
+  const kiteShield = (c = 'team') => CV && CV.shield ? CV.shield(c, add, type, 'kite') : add(P('kite', 'wood', c, 'shield', [0, -0.02, 0], [0.24, 0.34, 0.25]));
   const spear = (len = 1.25, tip = 0.1) => { add(P('cyl', 'wood', C.wood, 'tool', [0, 0.35, 0], [0.025, len, 0.025])); add(P('cone', 'metal', C.metal, 'tool', [0, 0.35 + len / 2 + tip / 2, 0], [0.045, tip, 0.03])); };
 
+  const hb = (o) => (CV && CV.body ? CV.body(o, type) : humanBase(o));
   switch (type) {
     case 'villager':
-      add(...humanBase({ torso: C.tunic, legs: C.brown }));
+      add(...hb({ torso: C.tunic, legs: C.brown }));
       add(P('box', 'cloth', 'team', 'body', [0, 0.2, 0], [0.335, 0.05, 0.235], [0, 0, 0.6]));
       helmet('straw');
       // outils (affichés selon l'activité via le canal « tool »)
@@ -779,27 +793,27 @@ export function unitParts(type) {
       add({ ...P('sph', 'cloth', 0xc04a36, 'back', [0, 0.06, -0.17], [0.16, 0.14, 0.14]), carry: 'food' });
       break;
     case 'militia':
-      add(...humanBase({ torso: 'team', torsoMat: 'cloth' }));
+      add(...hb({ torso: 'team', torsoMat: 'cloth' }));
       add(P('taper', 'leather', C.leather, 'body', [0, 0.2, 0], [0.335, 0.3, 0.235]));
       helmet('cap'); sword(0.34); roundShield();
       break;
     case 'spearman':
-      add(...humanBase({ torso: 'team' }));
+      add(...hb({ torso: 'team' }));
       helmet('cap'); spear(1.3, 0.12); roundShield('teamDk');
       break;
     case 'swordsman':
-      add(...humanBase({ torso: C.metal, torsoMat: 'metal', sleeve: C.metal }));
+      add(...hb({ torso: C.metal, torsoMat: 'metal', sleeve: C.metal }));
       add(P('box', 'cloth', 'team', 'body', [0, 0.12, 0.08], [0.26, 0.42, 0.1]));
       helmet('nasal'); sword(0.42); kiteShield();
       break;
     case 'champion':
-      add(...humanBase({ torso: C.metal, torsoMat: 'metal', sleeve: C.metal, legs: C.darkmetal }));
+      add(...hb({ torso: C.metal, torsoMat: 'metal', sleeve: C.metal, legs: C.darkmetal }));
       add(P('box', 'cloth', 'team', 'body', [0, 0.1, 0.09], [0.24, 0.48, 0.08]));
       add(P('sph', 'metal', C.metal, 'body', [-0.17, 0.33, 0], [0.13, 0.1, 0.13])); add(P('sph', 'metal', C.metal, 'body', [0.17, 0.33, 0], [0.13, 0.1, 0.13]));
       helmet('great'); plume(); sword(0.55); kiteShield();
       break;
     case 'royal_guard':
-      add(...humanBase({ torso: C.metal, torsoMat: 'metal', sleeve: C.metal, legs: C.darkmetal }));
+      add(...hb({ torso: C.metal, torsoMat: 'metal', sleeve: C.metal, legs: C.darkmetal }));
       add(P('box', 'cloth', 'team', 'back', [0, 0.05, -0.12], [0.34, 0.62, 0.02], [0.12, 0, 0]));
       add(P('box', 'cloth', C.gold, 'body', [0, 0.18, 0.12], [0.08, 0.08, 0.02]));
       helmet('nasal'); add(P('cyl', 'gold', C.gold, 'head', [0, 0.14, 0], [0.235, 0.035, 0.235])); plume(C.gold);
@@ -808,14 +822,14 @@ export function unitParts(type) {
       add(P('cone', 'metal', C.metal, 'tool', [0, 1.1, 0], [0.04, 0.14, 0.03]));
       break;
     case 'archer':
-      add(...humanBase({ torso: 'team', legs: C.brown }));
+      add(...hb({ torso: 'team', legs: C.brown }));
       helmet('hood');
       add(P('bow', 'wood', C.wood, 'shield', [0, 0, 0.02], [0.75, 0.75, 0.75], [0, Math.PI / 2, -Math.PI * 0.45]));
       add(P('cyl', 'leather', C.leather, 'back', [0.08, 0.15, -0.15], [0.09, 0.34, 0.09], [0.2, 0, 0.2]));
       add(P('cone', 'cloth', C.white, 'back', [0.1, 0.36, -0.13], [0.06, 0.06, 0.06]));
       break;
     case 'crossbowman':
-      add(...humanBase({ torso: 'team' }));
+      add(...hb({ torso: 'team' }));
       add(P('taper', 'cloth', 0xc8b890, 'body', [0, 0.19, 0], [0.335, 0.3, 0.235]));
       helmet('kettle');
       add(P('box', 'wood', C.wood, 'tool', [0, 0.18, 0.02], [0.05, 0.4, 0.05]));
@@ -823,7 +837,7 @@ export function unitParts(type) {
       add(P('cyl', 'leather', C.leather, 'back', [0.1, 0.0, -0.14], [0.08, 0.25, 0.08]));
       break;
     case 'skirmisher':
-      add(...humanBase({ torso: 'team', legs: C.leather }));
+      add(...hb({ torso: 'team', legs: C.leather }));
       helmet('hair');
       add(P('cyl', 'wood', C.wood, 'tool', [0, 0.3, 0], [0.02, 0.85, 0.02])); add(P('cone', 'metal', C.metal, 'tool', [0, 0.76, 0], [0.035, 0.08, 0.025]));
       add(P('disc', 'wood', 'teamDk', 'shield', [0, 0, 0], [0.18, 0.03, 0.18], [Math.PI / 2, 0, 0]));
@@ -869,6 +883,60 @@ export function unitParts(type) {
       }
       break;
     }
+    case 'legionary':
+      add(...humanBase({ torso: 'team', legs: C.brown }));
+      for (let i = 0; i < 4; i++) add(P('taper', 'metal', C.metal, 'body', [0, 0.06 + i * 0.075, 0], [0.335, 0.06, 0.24]));
+      add(P('sph', 'metal', C.metal, 'body', [-0.17, 0.33, 0], [0.12, 0.08, 0.12])); add(P('sph', 'metal', C.metal, 'body', [0.17, 0.33, 0], [0.12, 0.08, 0.12]));
+      CIV_GEAR.romains.helmet('nasal', add, type);
+      CIV_GEAR.romains.shield('team', add, type, 'kite');
+      CIV_GEAR.romains.sword(0.3, add, type);
+      break;
+    case 'samurai':
+      add(...CIV_GEAR.japonais.body({ torso: 'team' }, 'champion'));
+      CIV_GEAR.japonais.helmet('great', add, type);
+      add(P('blade', 'metal', C.metal, 'tool', [0, 0.4, 0.02], [0.03, 0.66, 0.012], [0.12, 0, 0]));
+      add(P('cyl', 'cloth', 0x202020, 'tool', [0, 0.02, 0], [0.03, 0.18, 0.03])); add(P('disc', 'gold', C.gold, 'tool', [0, 0.1, 0], [0.07, 0.015, 0.07]));
+      add(P('cyl', 'cloth', 0x2a2a2a, 'body', [0.16, -0.02, -0.05], [0.025, 0.55, 0.025], [0.9, 0, 0.3]));
+      break;
+    case 'berserker':
+      add(...humanBase({ torso: 0x6b4a2e, torsoMat: 'leather', sleeve: 'skin', legs: C.brown }));
+      add(P('box', 'cloth', 'team', 'body', [0, 0.02, 0.01], [0.35, 0.08, 0.25]));
+      add(P('hemi', 'leather', 0x5a3e28, 'head', [0, 0.14, -0.02], [0.26, 0.24, 0.27]));
+      add(P('cone', 'cloth', 0x8a5a2a, 'head', [0, -0.02, 0.09], [0.12, 0.16, 0.08], [Math.PI, 0, 0]));
+      add(P('box', 'leather', 0x4a3220, 'back', [0, -0.05, -0.12], [0.36, 0.55, 0.03], [0.15, 0, 0]));
+      for (const b of ['tool']) { add(P('cyl', 'wood', C.wood, b, [0, 0.15, 0], [0.03, 0.55, 0.03])); add(P('box', 'metal', C.metal, b, [0.07, 0.38, 0], [0.16, 0.14, 0.02])); }
+      break;
+    case 'slinger':
+      add(...CIV_GEAR.incas.body({ torso: 'team', legs: C.brown }, type));
+      CIV_GEAR.incas.helmet('hood', add, type);
+      add(P('cyl', 'cloth', C.rope, 'tool', [0, 0.18, 0], [0.012, 0.36, 0.012]));
+      add(P('sph', 'leather', C.leather, 'tool', [0, 0.38, 0], [0.06, 0.05, 0.06]));
+      add(P('cyl', 'leather', C.leather, 'back', [0.1, -0.02, -0.14], [0.12, 0.16, 0.12]));
+      break;
+    case 'chariot': {
+      const coat = C.horseB;
+      add(P('cap', 'leather', coat, 'hbody', [0, 0, 0.1], [0.38, 0.4, 0.38], [Math.PI / 2, 0, 0]));
+      add(P('cap', 'leather', coat, 'hhead', [0, 0.16, 0.02], [0.17, 0.2, 0.2], [0.5, 0, 0]));
+      add(P('cap', 'leather', coat, 'hhead', [0, 0.32, 0.16], [0.14, 0.14, 0.24], [1.3, 0, 0]));
+      add(P('cone', 'cloth', 'team', 'hhead', [0, 0.45, 0.06], [0.06, 0.16, 0.06]));
+      for (const b of ['hlegFL', 'hlegFR', 'hlegBL', 'hlegBR']) { add(P('cap', 'leather', coat, b, [0, -0.2, 0], [0.1, 0.22, 0.1])); add(P('cyl', 'leather', C.horseD, b, [0, -0.43, 0], [0.09, 0.06, 0.09])); }
+      add(P('cone', 'cloth', C.hair, 'tail', [0, -0.18, 0], [0.09, 0.4, 0.07], [Math.PI, 0, 0]));
+      add(P('box', 'cloth', 'team', 'hbody', [0, 0.05, 0.1], [0.42, 0.2, 0.6]));
+      // caisse du char et roues
+      add(P('box', 'wood', 0xa8783a, 'hbody', [0, -0.05, -0.72], [0.62, 0.3, 0.4]));
+      add(P('box', 'gold', C.gold, 'hbody', [0, 0.1, -0.53], [0.64, 0.05, 0.03]));
+      add(P('cyl', 'wood', C.wood, 'hbody', [0, -0.12, -0.3], [0.04, 0.6, 0.04], [Math.PI / 2, 0, 0]));
+      for (const x of [-0.36, 0.36]) { add(P('wheel', 'wood', 0x5a3d22, 'hbody', [x, -0.26, -0.75], [0.56, 0.56, 0.56], [0, Math.PI / 2, 0])); add(P('cyl', 'gold', C.gold, 'hbody', [x, -0.26, -0.75], [0.06, 0.06, 0.06], [0, 0, Math.PI / 2])); }
+      // archer debout
+      add(P('taper', 'cloth', 0xf0ead8, 'body', [0, 0.18, 0], [0.3, 0.36, 0.22]));
+      add(P('ring', 'gold', C.gold, 'body', [0, 0.34, 0], [0.34, 0.34, 0.2], [Math.PI / 2, 0, 0]));
+      add(P('sph', 'skin', 'skin', 'head', [0, 0.1, 0], [0.2, 0.22, 0.2]));
+      CIV_GEAR.egyptiens.helmet('cap', add, type);
+      for (const b of ['armL', 'armR']) { add(P('cap', 'skin', 'skin', b, [0, -0.14, 0], [0.085, 0.16, 0.085])); }
+      for (const b of ['legL', 'legR']) add(P('cap', 'skin', 'skin', b, [b === 'legL' ? -0.08 : 0.08, -0.2, 0], [0.11, 0.2, 0.11]));
+      add(P('bow', 'wood', C.wood, 'shield', [0, 0, 0.02], [0.75, 0.75, 0.75], [0, Math.PI / 2, -Math.PI * 0.45]));
+      break;
+    }
     case 'ram':
       add(P('box', 'wood', C.wood, 'root', [0, 0.32, 0], [0.6, 0.1, 1.2]));
       for (const [x, z] of [[-0.3, -0.42], [0.3, -0.42], [-0.3, 0.42], [0.3, 0.42]]) add(P('disc', 'wood', 0x4a3220, 'root', [x, 0.2, z], [0.36, 0.06, 0.36], [0, 0, Math.PI / 2]));
@@ -904,6 +972,99 @@ export function unitParts(type) {
 }
 
 export const SKIN_TONES = SKIN;
+
+// ------------------------------------------------------------------ équipements par civilisation
+const isMil = (t) => t !== 'villager';
+export const CIV_GEAR = {
+  romains: {
+    helmet(style, add, type) {
+      if (!isMil(type) || style === 'straw' || style === 'hair') { add(P('hemi', 'cloth', 0x3a2a1a, 'head', [0, 0.12, -0.01], [0.21, 0.16, 0.21])); return; }
+      add(P('hemi', 'metal', C.metal, 'head', [0, 0.13, 0], [0.235, 0.24, 0.235]));
+      add(P('box', 'metal', C.metal, 'head', [-0.1, 0.05, 0.04], [0.02, 0.1, 0.08])); add(P('box', 'metal', C.metal, 'head', [0.1, 0.05, 0.04], [0.02, 0.1, 0.08]));
+      add(P('box', 'cloth', style === 'great' ? C.gold : 0xb02a20, 'head', [0, 0.3, 0], [0.04, 0.1, 0.26]));
+    },
+    sword(len, add) { add(P('blade', 'metal', C.metal, 'tool', [0, Math.min(len, 0.32) / 2 + 0.05, 0], [0.045, Math.min(len, 0.32), 0.012])); add(P('sph', 'gold', C.gold, 'tool', [0, 0.04, 0], [0.06, 0.04, 0.05])); },
+    shield(c, add, type, kind) {
+      if (kind === 'round' && type === 'spearman') { add(P('disc', 'wood', c, 'shield', [0, 0, 0], [0.3, 0.03, 0.3], [Math.PI / 2, 0, 0])); return; }
+      add(P('box', 'wood', c, 'shield', [0, 0, 0.02], [0.3, 0.46, 0.05]));
+      add(P('box', 'gold', C.gold, 'shield', [0, 0, 0.05], [0.32, 0.02, 0.02])); add(P('sph', 'gold', C.gold, 'shield', [0, 0, 0.05], [0.07, 0.07, 0.04]));
+    },
+  },
+  egyptiens: {
+    helmet(style, add, type) {
+      if (!isMil(type)) { add(P('hemi', 'cloth', 0xf0ead8, 'head', [0, 0.11, -0.02], [0.23, 0.2, 0.24])); add(P('box', 'cloth', 0xf0ead8, 'head', [0, 0.0, -0.09], [0.2, 0.18, 0.05])); return; }
+      if (style === 'great') { add(P('cone', 'cloth', 0x2a4aa0, 'head', [0, 0.25, -0.02], [0.24, 0.3, 0.24])); add(P('disc', 'gold', C.gold, 'head', [0, 0.14, 0], [0.24, 0.02, 0.24])); return; }
+      add(P('hemi', 'cloth', 'team', 'head', [0, 0.11, -0.01], [0.235, 0.22, 0.245]));
+      add(P('box', 'cloth', 'team', 'head', [-0.11, -0.02, 0.0], [0.05, 0.2, 0.1])); add(P('box', 'cloth', 'team', 'head', [0.11, -0.02, 0.0], [0.05, 0.2, 0.1]));
+      add(P('box', 'cloth', C.gold, 'head', [0, 0.13, 0.0], [0.24, 0.03, 0.245]));
+    },
+    sword(len, add) {
+      add(P('cyl', 'leather', C.leather, 'tool', [0, 0.02, 0], [0.025, 0.12, 0.025]));
+      add(P('hook', 'metal', 0xc8a050, 'tool', [0.05, 0.22, 0], [0.18, 0.3, 0.2], [0, 0, 1.4]));
+    },
+    shield(c, add) { add(P('box', 'wood', c, 'shield', [0, -0.03, 0.02], [0.24, 0.34, 0.04])); add(P('disc', 'wood', c, 'shield', [0, 0.14, 0.02], [0.24, 0.04, 0.12], [Math.PI / 2, 0, 0])); },
+    body(o, type) {
+      const parts = humanBase({ ...o, torso: 'skin', torsoMat: 'skin', sleeve: 'skin', skirt: false, legs: 'skin' });
+      parts.push(P('taper', 'cloth', 0xf2ecdc, 'body', [0, -0.07, 0], [0.34, 0.2, 0.25], [Math.PI, 0, 0]));
+      parts.push(P('ring', 'gold', isMil(type) ? 'team' : C.gold, 'body', [0, 0.34, 0], [0.34, 0.34, 0.2], [Math.PI / 2, 0, 0]));
+      if (isMil(type)) parts.push(P('box', 'cloth', 'team', 'body', [0, 0.02, 0.1], [0.08, 0.2, 0.02]));
+      return parts;
+    },
+  },
+  incas: {
+    helmet(style, add, type) {
+      if (!isMil(type) || style === 'hood' && type !== 'slinger') { add(P('cone', 'cloth', 'team', 'head', [0, 0.2, 0], [0.24, 0.24, 0.24])); add(P('cyl', 'cloth', 0xe8c040, 'head', [0, 0.1, 0], [0.235, 0.04, 0.235])); return; }
+      if (type === 'slinger') { add(P('cyl', 'cloth', 'team', 'head', [0, 0.12, 0], [0.235, 0.05, 0.235])); add(P('box', 'cloth', 0xe8c040, 'head', [0, 0.26, -0.03], [0.03, 0.18, 0.02], [-0.2, 0, 0])); return; }
+      add(P('hemi', 'wood', 0x8a6a40, 'head', [0, 0.13, 0], [0.235, 0.2, 0.235]));
+      add(P('box', 'cloth', 0xe83a2a, 'head', [0, 0.3, -0.02], [0.03, 0.16, 0.02], [-0.25, 0, 0])); add(P('box', 'cloth', 0xf0c030, 'head', [0.04, 0.29, -0.02], [0.03, 0.14, 0.02], [-0.25, 0, 0.3]));
+      if (style === 'great' || style === 'nasal') add(P('disc', 'gold', C.gold, 'head', [0, 0.18, 0.11], [0.1, 0.02, 0.1], [Math.PI / 2, 0, 0]));
+    },
+    sword(len, add) { add(P('cyl', 'wood', C.wood, 'tool', [0, 0.2, 0], [0.03, 0.42, 0.03])); add(P('dodec', 'metal', 0xb08a40, 'tool', [0, 0.42, 0], [0.13, 0.13, 0.13])); },
+    shield(c, add) { add(P('disc', 'wood', c, 'shield', [0, 0, 0], [0.22, 0.03, 0.22], [Math.PI / 2, 0, 0])); add(P('cone', 'cloth', 0xe8c040, 'shield', [0, -0.16, 0.02], [0.08, 0.12, 0.02], [Math.PI, 0, 0])); },
+    body(o, type) {
+      const parts = humanBase({ ...o, sleeve: 'skin', legs: 'skin' });
+      parts.push(P('box', 'cloth', 0xe8c040, 'body', [0, 0.14, 0.11], [0.22, 0.04, 0.02])); parts.push(P('box', 'cloth', 0xe8c040, 'body', [0, 0.24, 0.11], [0.22, 0.04, 0.02]));
+      void type;
+      return parts;
+    },
+  },
+  japonais: {
+    helmet(style, add, type) {
+      if (!isMil(type) || style === 'kettle') { add(P('cone', 'cloth', C.straw, 'head', [0, 0.2, 0], [0.5, 0.14, 0.5])); return; }
+      if (style === 'hood') { add(P('hemi', 'cloth', 0x202020, 'head', [0, 0.12, -0.01], [0.215, 0.18, 0.215])); add(P('cyl', 'cloth', 0xf0f0f0, 'head', [0, 0.12, 0], [0.23, 0.035, 0.23])); return; }
+      add(P('hemi', 'metal', 0x2a2a30, 'head', [0, 0.13, 0], [0.24, 0.23, 0.24]));
+      add(P('cone', 'metal', 0x2a2a30, 'head', [0, 0.06, -0.02], [0.4, 0.12, 0.38]));
+      add(P('box', 'gold', C.gold, 'head', [-0.06, 0.3, 0.1], [0.02, 0.16, 0.02], [0.2, 0, 0.45])); add(P('box', 'gold', C.gold, 'head', [0.06, 0.3, 0.1], [0.02, 0.16, 0.02], [0.2, 0, -0.45]));
+    },
+    sword(len, add) { add(P('blade', 'metal', C.metal, 'tool', [0, len / 2 + 0.1, 0.01], [0.026, Math.max(0.45, len + 0.1), 0.01], [0.1, 0, 0])); add(P('cyl', 'cloth', 0x202020, 'tool', [0, 0.02, 0], [0.028, 0.16, 0.028])); add(P('disc', 'gold', C.gold, 'tool', [0, 0.09, 0], [0.06, 0.012, 0.06])); },
+    shield() { /* les guerriers japonais ne portent pas de bouclier */ },
+    body(o, type) {
+      if (!isMil(type)) return humanBase({ ...o, torso: 0x4a5a6a });
+      const parts = humanBase({ ...o, torso: 0x2a2a30, torsoMat: 'metal', sleeve: 0x2a2a30 });
+      for (let i = 0; i < 3; i++) parts.push(P('taper', 'cloth', 'team', 'body', [0, 0.06 + i * 0.1, 0], [0.34, 0.02, 0.245]));
+      parts.push(P('box', 'metal', 0x2a2a30, 'body', [-0.19, 0.3, 0], [0.12, 0.12, 0.2])); parts.push(P('box', 'metal', 0x2a2a30, 'body', [0.19, 0.3, 0], [0.12, 0.12, 0.2]));
+      parts.push(P('box', 'cloth', 'team', 'back', [0, 0.3, -0.14], [0.14, 0.3, 0.01]));
+      parts.push(P('cyl', 'wood', C.wood, 'back', [0, 0.25, -0.13], [0.015, 0.6, 0.015]));
+      return parts;
+    },
+  },
+  vikings: {
+    helmet(style, add, type) {
+      add(P('cone', 'cloth', 0xc08a40, 'head', [0, -0.03, 0.08], [0.14, 0.18, 0.1], [Math.PI, 0, 0]));
+      if (!isMil(type) || style === 'hood' || style === 'hair') { add(P('hemi', 'cloth', 0xc08a40, 'head', [0, 0.12, -0.01], [0.22, 0.2, 0.22])); return; }
+      add(P('hemi', 'metal', 0x8a9098, 'head', [0, 0.13, 0], [0.235, 0.25, 0.235]));
+      add(P('box', 'metal', 0x8a9098, 'head', [0, 0.08, 0.115], [0.025, 0.1, 0.02]));
+      if (style === 'great') add(P('box', 'metal', 0x8a9098, 'head', [0, 0.1, 0.1], [0.18, 0.06, 0.04]));
+    },
+    sword(len, add) { add(P('cyl', 'wood', C.wood, 'tool', [0, 0.15, 0], [0.028, 0.5, 0.028])); add(P('box', 'metal', C.metal, 'tool', [0.06, 0.36, 0], [0.14, 0.13, 0.02])); },
+    shield(c, add) { add(P('disc', 'wood', c, 'shield', [0, 0, 0], [0.34, 0.03, 0.34], [Math.PI / 2, 0, 0])); add(P('disc', 'wood', C.wood, 'shield', [0, 0, -0.005], [0.36, 0.025, 0.36], [Math.PI / 2, 0, 0])); add(P('sph', 'metal', C.metal, 'shield', [0, 0, 0.02], [0.08, 0.08, 0.05])); },
+    body(o, type) {
+      const parts = humanBase(o);
+      if (isMil(type)) parts.push(P('box', 'cloth', 0x4a3a2a, 'back', [0, 0.0, -0.13], [0.34, 0.5, 0.02], [0.12, 0, 0]));
+      return parts;
+    },
+  },
+};
 
 // ------------------------------------------------------------------ nature
 export function treeGeometries() {
