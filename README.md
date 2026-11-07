@@ -7,6 +7,11 @@ les graphismes sont originaux et dessinés par le code, sans image externe.
 
 ## Lancer le jeu
 
+**Sous Windows** : double-cliquez sur `lancer-le-jeu.bat`. Le navigateur s'ouvre tout seul
+sur le jeu (Node.js doit être installé).
+
+**Autres systèmes, ou en ligne de commande** :
+
 Il faut Node.js 18 ou plus récent. Le projet n'a aucune dépendance à installer.
 
 ```bash
