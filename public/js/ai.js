@@ -4,7 +4,7 @@ import { UNITS, BUILDINGS, TECHS, AGES, CIVS } from './config.js';
 const DIFFICULTY = {
   facile: { gather: 0.8, firstAttack: 720, think: 2.0, maxVil: 30, wave: 6 },
   normal: { gather: 1.0, firstAttack: 540, think: 1.2, maxVil: 50, wave: 10 },
-  difficile: { gather: 1.2, firstAttack: 400, think: 0.8, maxVil: 60, wave: 12 },
+  difficile: { gather: 1.2, firstAttack: 400, think: 0.8, maxVil: 60, wave: 12, wonders: true },
 };
 
 const GK = { food: 'berries', wood: 'tree', gold: 'gold', stone: 'stone' };
@@ -66,20 +66,24 @@ export class AI {
     const p = this.p, g = this.g;
     const next = AGES[p.age + 1];
     if (!next || p.agingUp || !this.tc || !this.tc.built) return;
-    const vilNeed = [12, 20, 26][p.age] ?? 99;
+    const vilNeed = [12, 20, 26, 30, 32, 34, 36][p.age] ?? 99;
     if (this.vils.length < vilNeed) return;
     if (!g.ageRequirementMet(p)) return;
     for (const [k, v] of Object.entries(next.cost)) this.reserve[k] += v;
-    if (g.canAfford(p, next.cost) && this.tc.queue.length === 0) {
-      this.issue({ type: 'ageUp', building: this.tc.id });
+    if (g.canAfford(p, next.cost)) {
+      // libère la file de l'hôtel de ville (villageois en attente) pour lancer le passage d'âge
+      if (this.tc.queue.length && this.tc.queue.every((q) => q.kind === 'unit')) {
+        for (let i = this.tc.queue.length - 1; i >= 0; i--) this.issue({ type: 'cancel', building: this.tc.id, index: i });
+      }
+      if (this.tc.queue.length === 0) this.issue({ type: 'ageUp', building: this.tc.id });
     }
   }
 
   trainVillagers() {
     const tcs = this.blds.filter((b) => b.type === 'town_center' && b.built);
-    const target = Math.min(this.cfg.maxVil, [22, 34, 46, 56][this.p.age]);
+    const target = Math.min(this.cfg.maxVil, [22, 34, 46, 56, 60, 60, 60, 60][this.p.age]);
     for (const tc of tcs) {
-      if (this.vils.length >= target) break;
+      if (this.vils.length >= target || this.p.pop >= this.p.popCap) break;
       if (tc.queue.length < 2 && this.p.res.food - this.reserve.food >= 50) {
         this.issue({ type: 'train', building: tc.id, unit: 'villager' });
       } else if (tc.queue.length < 1 && this.p.res.food >= 50 && !this.p.agingUp) {
@@ -92,19 +96,23 @@ export class AI {
   findSpot(type, cx, cy, minD = 3, maxD = 14) {
     const g = this.g;
     const s = BUILDINGS[type].size;
-    let best = null, bestScore = Infinity;
-    for (let tries = 0; tries < 160; tries++) {
-      const a = g.rand() * Math.PI * 2;
-      const d = minD + g.rand() * (maxD - minD);
-      const tx = Math.round(cx + Math.cos(a) * d - s / 2), ty = Math.round(cy + Math.sin(a) * d - s / 2);
-      // marge d'une tuile pour ne pas bloquer les passages
-      if (!g.canPlace(this.id, type, tx, ty)) continue;
-      if (!BUILDINGS[type].farm && !this.hasMargin(tx, ty, s)) continue;
-      const score = d + g.rand() * 2;
-      if (score < bestScore) { bestScore = score; best = { tx, ty }; }
-      if (tries > 40 && best) break;
+    // élargit la recherche si la base est saturée
+    for (let k = 0; k < 4; k++) {
+      const lo = k === 0 ? minD : maxD * (0.6 + k * 0.4), hi = Math.min(40, maxD * (1 + k * 0.6));
+      let best = null, bestScore = Infinity;
+      for (let tries = 0; tries < 160; tries++) {
+        const a = g.rand() * Math.PI * 2;
+        const d = lo + g.rand() * (hi - lo);
+        const tx = Math.round(cx + Math.cos(a) * d - s / 2), ty = Math.round(cy + Math.sin(a) * d - s / 2);
+        if (!g.canPlace(this.id, type, tx, ty)) continue;
+        if (!BUILDINGS[type].farm && !this.hasMargin(tx, ty, s)) continue;
+        const score = d + g.rand() * 2;
+        if (score < bestScore) { bestScore = score; best = { tx, ty }; }
+        if (tries > 40 && best) break;
+      }
+      if (best) return best;
     }
-    return best;
+    return null;
   }
 
   hasMargin(tx, ty, s) {
@@ -161,7 +169,7 @@ export class AI {
     const prod = this.blds.filter((b) => b.built && (BUILDINGS[b.type].trains)).length;
     const margin = 3 + prod * 2;
     if (p.popCap < 200 && p.pop + margin >= p.popCap && this.blds.filter((b) => b.type === 'house' && !b.built).length < (p.pop > 40 ? 2 : 1)) {
-      this.tryBuild('house', base.x, base.y, 4, 12, 1, true);
+      this.tryBuild('house', base.x, base.y, 4, Math.min(28, 12 + this.count('house') * 0.45), 1, true);
     }
   }
 
@@ -212,7 +220,7 @@ export class AI {
   }
 
   foodTarget() {
-    return Math.round(this.vils.length * [0.5, 0.42, 0.4, 0.38][this.p.age]);
+    return Math.round(this.vils.length * [0.5, 0.42, 0.4, 0.38][Math.min(3, this.p.age)]);
   }
 
   desired() {
@@ -222,7 +230,7 @@ export class AI {
       { food: 0.42, wood: 0.38, gold: 0.16, stone: 0.04 },
       { food: 0.38, wood: 0.32, gold: 0.24, stone: 0.06 },
       { food: 0.36, wood: 0.3, gold: 0.28, stone: 0.06 },
-    ][this.p.age];
+    ][Math.min(3, this.p.age)];
     const out = {};
     for (const k of Object.keys(ratios)) out[k] = Math.round(n * ratios[k]);
     // besoins spécifiques
@@ -290,13 +298,31 @@ export class AI {
     }
     if (p.age >= 2 && this.count('siege_workshop') === 0) this.tryBuild('siege_workshop', base.x, base.y, 6, 14);
     if (p.age >= 2 && this.vils.length > 30 && this.count('barracks') < 2) this.tryBuild('barracks', base.x, base.y, 6, 15);
+    // âges avancés : bâtiments requis pour progresser et nouvelles armes
+    if (p.age >= 3 && this.count('university') === 0) this.tryBuild('university', base.x, base.y, 6, 15, 2, true);
+    if (p.age >= 4 && this.count('bank') < 2) this.tryBuild('bank', base.x, base.y, 6, 15, 1, this.count('bank') === 0);
+    if (p.age >= 5 && this.count('factory') < 2) this.tryBuild('factory', base.x, base.y, 7, 17, 2, this.count('factory') === 0);
+    if (p.age >= 5 && this.count('bunker') < 2 && p.res.stone > 500) this.tryBuild('bunker', base.x, base.y, 6, 11);
+    if (p.age >= 6 && this.count('airfield') === 0) this.tryBuild('airfield', base.x, base.y, 7, 17, 2, true);
+    if (p.age >= 7 && this.count('laser_turret') < 3 && p.res.gold > 800) this.tryBuild('laser_turret', base.x, base.y, 6, 11);
+    // merveille et programme spatial (IA difficile surtout)
+    if (p.age >= 3 && this.cfg.wonders && this.count('wonder') === 0 && this.vils.length > 34) this.tryBuild('wonder', base.x, base.y, 8, 18, 6);
+    if (p.age >= 7 && this.count('space_program') === 0 && this.vils.length > 34) this.tryBuild('space_program', base.x, base.y, 8, 18, 8);
+    // réglage des usines : produire la ressource la plus rare
+    for (const f of this.blds.filter((b) => b.type === 'factory' && b.built)) {
+      const want = ['wood', 'gold', 'food', 'stone'].sort((a, c) => p.res[a] - p.res[c])[0];
+      if (f.mode !== want && (!f.lastSwitch || this.g.time - f.lastSwitch > 30)) { this.issue({ type: 'factoryMode', building: f.id, res: want }); f.lastSwitch = this.g.time; }
+    }
   }
 
   research() {
     const g = this.g, p = this.p;
     if (this.vils.length < 10) return;
     const prio = ['double_axe', 'horse_collar', 'loom', 'wheelbarrow', 'gold_mining', 'fletching', 'forging', 'scale_armor',
-      'bow_saw', 'heavy_plow', 'barding', 'bloodlines', 'iron_casting', 'bodkin', 'chain_mail', 'hand_cart', 'masonry', 'stone_mining'];
+      'bow_saw', 'heavy_plow', 'barding', 'bloodlines', 'iron_casting', 'bodkin', 'chain_mail', 'hand_cart', 'masonry', 'stone_mining',
+      'census', 'chemistry', 'crop_rotation', 'two_man_saw', 'gold_shaft', 'conscription', 'blast_furnace', 'plate_armor', 'plate_barding', 'architecture',
+      'printing', 'flintlock', 'compound_interest', 'bastion', 'steam_power', 'railway', 'rifling', 'medicine',
+      'mechanization', 'kevlar', 'radar', 'jet_engines', 'fusion', 'ai_tactics', 'nanotech', 'stone_shaft'];
     for (const t of prio) {
       const def = TECHS[t];
       if (p.techs.has(t) || p.researching.has(t) || p.age < def.age) continue;
@@ -326,6 +352,10 @@ export class AI {
     if (a === 0) list.push('militia');
     if (a >= 1) list.push(enemyCav > 3 ? 'spearman' : 'militia', enemyArch > 3 ? 'skirmisher' : 'archer', 'scout');
     if (a >= 2) list.splice(0, list.length, a >= 3 ? 'champion' : 'swordsman', enemyArch > 4 ? 'skirmisher' : 'crossbowman', a >= 3 ? 'paladin' : 'knight', enemyCav > 4 ? 'spearman' : 'crossbowman');
+    if (a >= 4) list.splice(0, list.length, 'musketeer', 'cuirassier', 'champion');
+    if (a >= 5) list.splice(0, list.length, 'fusilier', 'dragoon', 'musketeer');
+    if (a >= 6) list.splice(0, list.length, 'soldier', 'machine_gunner', 'tank', 'bomber', 'dragoon', 'fusilier');
+    if (a >= 7) list.splice(0, list.length, 'exo_soldier', 'robot', 'drone', 'tank', 'soldier', 'dragoon', 'fusilier');
     return list;
   }
 
@@ -341,12 +371,14 @@ export class AI {
       if (b.type === 'siege_workshop') {
         const sieges = this.army.filter((u) => UNITS[u.type].cls === 'siege').length;
         if (sieges >= 4) continue;
-        pick = sieges % 2 === 0 ? 'ram' : (p.age >= 3 ? 'bombard' : 'mangonel');
+        pick = p.age >= 5 ? 'field_gun' : p.age >= 4 ? 'cannon' : sieges % 2 === 0 ? 'ram' : (p.age >= 3 ? (sieges % 3 === 1 ? 'trebuchet' : 'bombard') : 'mangonel');
       }
       if (b.type === 'fortress') pick = CIVS[p.civ].unique;
       if (!pick) continue;
-      if (this.army.length > 60) continue;
-      if (this.spare(UNITS[pick].cost)) this.issue({ type: 'train', building: b.id, unit: pick });
+      if (this.army.length > 60 + this.p.age * 5) continue;
+      // une armée minimale est maintenue même pendant l'épargne pour le passage d'âge
+      const minArmy = 8 + p.age * 4;
+      if (this.army.length < minArmy ? this.g.canAfford(p, UNITS[pick].cost) : this.spare(UNITS[pick].cost)) this.issue({ type: 'train', building: b.id, unit: pick });
     }
   }
 

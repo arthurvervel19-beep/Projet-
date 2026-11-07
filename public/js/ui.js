@@ -1,8 +1,9 @@
 // Interface : souris, clavier, caméra, panneau de commandes, informations, messages.
-import { UNITS, BUILDINGS, TECHS, AGES, BUILD_MENU, RES_NAME, CIVS } from './config.js';
+import { UNITS, BUILDINGS, TECHS, AGES, BUILD_PAGES, RES_NAME, CIVS } from './config.js';
 import { icon, techIcon, resImg, costHTML, resIconURL } from './icons.js';
 
 const RI = (k) => resImg(k);
+const fmtTime = (t) => { const s = Math.max(0, Math.ceil(t)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
 
 const HOTKEYS = 'QWERTYASDFGHZXCVBN';
 
@@ -479,11 +480,25 @@ export class UI {
     this.el('idle-count').textContent = g.units.filter((u) => u.owner === this.me && u.type === 'villager' && !u.order).length;
     this.renderInfo();
     this.renderCommands();
+    this.renderCountdowns();
   }
 
   sel() { return [...this.selected].map((id) => this.g.get(id)).filter(Boolean); }
 
   sound(kind, vol = 1) { if (this.audio) this.audio.sfxPlay(kind, vol); }
+
+  // bandeau des comptes à rebours (merveilles et fusées)
+  renderCountdowns() {
+    const el = this.el('countdown');
+    if (!el) return;
+    const list = this.g.buildings.filter((b) => !b.dead && b.countdown !== undefined);
+    if (!list.length) { el.classList.add('hidden'); return; }
+    el.classList.remove('hidden');
+    el.innerHTML = list.map((b) => {
+      const p = this.g.players[b.owner], sp = BUILDINGS[b.type].space;
+      return `<div class="cd ${b.owner === this.me ? 'mine' : 'enemy'}"><span class="dot" style="background:${p.color}"></span>${sp ? 'Lancement spatial' : 'Merveille'} — ${p.name} <b>${fmtTime(b.countdown)}</b></div>`;
+    }).join('');
+  }
 
   // réplique vocale de l'unité principale d'un groupe
   announce(units, action) {
@@ -505,7 +520,7 @@ export class UI {
     if (d > 1.5) return;
     if (!this.g.players[this.me].visible[Math.floor(ev.y) * this.g.map.w + Math.floor(ev.x)]) return;
     const vol = Math.max(0, 1 - d / 1.5) * (0.6 + 0.4 * Math.min(1, this.r.cam.zoom));
-    if (ev.kind === 'hit' || ev.kind === 'arrow' || ev.kind === 'boom') this.audio.combat(0.12);
+    if (['hit', 'arrow', 'boom', 'gunshot', 'mg', 'cannon', 'laser'].includes(ev.kind)) this.audio.combat(0.12);
     this.audio.sfxPlay(ev.kind, vol, dx * 0.7);
   }
 
@@ -572,7 +587,10 @@ export class UI {
         <div class="row stats"><span class="stat" data-tip="Points de vie">${icon('heart')}<b>${Math.ceil(e.hp)}/${e.maxHp}</b></span><span class="stat" data-tip="Armure (mêlée / perçage)">${icon('shield')}<b>${g.armorOf(e).join('/')}</b></span>${def.attack ? `<span class="stat" data-tip="Attaque">${icon('sword')}<b>${g.buildingAttack(e).atk}</b></span><span class="stat" data-tip="Portée">${icon('range')}<b>${g.buildingAttack(e).range}</b></span>` : ''}</div>`;
       if (!e.built) html += `<div class="row">En construction : <b>${Math.floor(e.progress * 100)}%</b></div>`;
       if (def.farm && e.built) html += `<div class="row"><span class="stat">${RI('food')} Nourriture restante : <b>${Math.ceil(e.food)}</b></span></div>`;
-      if (def.pop) html += `<div class="row"><span class="stat">${icon('pop')} +${def.pop} population</span></div>`;
+      if (def.pop) html += `<div class="row"><span class="stat">${icon('pop')} +${def.pop + (e.type === 'house' ? g.players[e.owner].mods.housePop : 0)} population</span></div>`;
+      if (def.income && e.built) html += `<div class="row"><span class="stat">${RI('gold')} +${(def.income.gold * g.players[e.owner].mods.income.bank).toFixed(1)} or / s</span></div>`;
+      if (def.factory && e.built) html += `<div class="row"><span class="stat">${RI(e.mode || 'wood')} +${(1.5 * g.players[e.owner].mods.income.factory).toFixed(1)} ${RES_NAME[e.mode || 'wood'].toLowerCase()} / s</span></div>`;
+      if (e.countdown !== undefined) html += `<div class="row"><span class="stat">${icon('clock')} ${def.space ? 'Lancement dans' : 'Victoire dans'} <b>${fmtTime(e.countdown)}</b></span></div>`;
       if (def.market && e.owner === this.me) {
         html += `<div class="row">Cours : ${Object.entries(g.marketPrices).map(([k, v]) => `<span class="stat">${RI(k)} achat <b>${v}</b> · vente <b>${Math.round(v * 0.7)}</b> ${RI('gold')}</span>`).join(' — ')}</div>`;
       }
@@ -599,7 +617,8 @@ export class UI {
     const units = list.filter((e) => e.kind === 'unit');
     if (units.length) {
       if (units.some((u) => u.type === 'villager')) {
-        for (const type of BUILD_MENU) {
+        const page = BUILD_PAGES[this.buildPage || 0];
+        for (const type of page.list) {
           const def = BUILDINGS[type];
           const okAge = p.age >= def.age;
           btns.push({
@@ -608,6 +627,8 @@ export class UI {
             action: () => this.startPlacing(type),
           });
         }
+        const other = BUILD_PAGES[(this.buildPage + 1) % BUILD_PAGES.length || 0] || BUILD_PAGES[1];
+        btns.push({ icon: icon('menu'), key: 'V', badge: (this.buildPage || 0) + 1 + '/2', tip: `<b>Page suivante</b> (V)<div>Afficher : ${other.name}</div>`, action: () => { this.buildPage = ((this.buildPage || 0) + 1) % BUILD_PAGES.length; this.cmdSig = ''; this.hudTimer = 0; } });
       } else {
         btns.push({ icon: icon('attackMove'), key: 'Q', tip: '<b>Attaque-mouvement</b> (Q)<div>Se déplace en attaquant les ennemis rencontrés.</div>', action: () => { this.mode = 'attackMove'; } });
       }
@@ -654,6 +675,12 @@ export class UI {
           tip: `<b>Passer à l'${next.name.slice(2)}</b> (Z)<div>Débloque de nouveaux bâtiments, unités et technologies.</div><div class="tip-stats">${icon('clock')} ${next.time}s</div>${costHtml(next.cost)}${reqOk ? '' : `<div class="no">${g.ageRequirementText(p)}</div>`}`,
           action: () => this.g.issue(this.me, { type: 'ageUp', building: b.id }) && (this.hudTimer = 0),
         });
+      }
+      if (def.factory) {
+        for (const r of ['food', 'wood', 'gold', 'stone']) {
+          const on = (b.mode || 'wood') === r;
+          btns.push({ icon: resImg(r, 'mk'), badge: on ? 'actif' : '', key: nextKey(), tip: `<b>Produire : ${RES_NAME[r]}</b><div>L'usine produit cette ressource en continu.</div>`, action: () => { this.g.issue(this.me, { type: 'factoryMode', building: b.id, res: r }); this.cmdSig = ''; this.hudTimer = 0; } });
+        }
       }
       if (def.market) {
         for (const r of ['food', 'wood', 'stone']) {

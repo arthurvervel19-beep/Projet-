@@ -99,7 +99,6 @@ function demoLoop(now) {
   d.game.events.length = 0;
   d.renderer.draw(Math.min(1, d.acc / TICK), d.ui);
   requestAnimationFrame(demoLoop);
-  setTimeout(updateCivCard, 50);
 }
 
 function stopDemo() {
@@ -187,10 +186,12 @@ function showEnd(s) {
   const won = g.winner === 0;
   audio.sfxPlay(won ? 'victory' : 'defeat');
   audio.setScene(won ? 'victory' : 'defeat');
-  $('end-title').textContent = won ? 'Victoire !' : 'Défaite…';
+  const reason = g.victoryReason === 'space' ? ' — victoire scientifique' : g.victoryReason === 'wonder' ? ' — victoire par la merveille' : '';
+  $('end-title').textContent = (won ? 'Victoire !' : 'Défaite…');
+  $('end-stats').dataset.reason = reason;
   const rows = g.players.map((p) => `<tr><td style="color:${p.color}">${p.name}</td><td>${Object.values(p.stats.gathered).reduce((a, b) => a + b, 0)}</td><td>${p.stats.trained}</td><td>${p.stats.built}</td><td>${p.stats.kills}</td><td>${p.stats.losses}</td><td>${p.stats.razed}</td><td>${p.techs.size}</td></tr>`).join('');
   const t = Math.floor(g.time);
-  $('end-stats').innerHTML = `<p>Durée : ${Math.floor(t / 60)} min ${t % 60} s</p>
+  $('end-stats').innerHTML = `<p>${g.players[g.winner] ? g.players[g.winner].name : ''}${reason}</p><p>Durée : ${Math.floor(t / 60)} min ${t % 60} s</p>
     <table><tr><th></th><th>Récolté</th><th>Unités</th><th>Bâtiments</th><th>Tués</th><th>Pertes</th><th>Rasés</th><th>Technos</th></tr>${rows}</table>`;
   $('end').classList.remove('hidden');
 }

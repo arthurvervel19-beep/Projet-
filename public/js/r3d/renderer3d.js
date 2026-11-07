@@ -15,8 +15,32 @@ import {
   rockGeometries, bushGeometries, sheepGeometries, grassTuftGeometry, arrowGeometry, makeBanner, boxGeo, CIV_SKINS,
 } from './models.js';
 import { civBuildingModel, civWallMaterial } from './civstyles.js';
+import { extraBuildingModel, EXTRA_TYPES } from './extraModels.js';
 
 const MAXU = 520;
+const GUNS = new Set(['musketeer', 'fusilier', 'soldier', 'machine_gunner', 'exo_soldier', 'dragoon']);
+function unitMidHeight(type) {
+  const cls = UNITS[type].cls;
+  if (type === 'bomber') return 3.4;
+  if (cls === 'air') return 2.3;
+  if (type === 'robot') return 0.9;
+  return cls === 'cavalry' || cls === 'siege' ? 0.4 : 0.3;
+}
+function unitTopHeight(type) {
+  const cls = UNITS[type].cls;
+  if (type === 'bomber') return 3.85;
+  if (cls === 'air') return 2.6;
+  if (type === 'robot') return 1.85;
+  if (type === 'trebuchet') return 1.6;
+  return cls === 'cavalry' || cls === 'siege' ? 1.0 : 0.82;
+}
+function unitScale(type) {
+  const cls = UNITS[type].cls;
+  if (cls === 'air') return 1;
+  if (type === 'robot') return 0.78 * 1.6;
+  if (type === 'tank') return 0.95;
+  return cls === 'siege' ? 0.85 : 0.78;
+}
 const HUMAN_SCALE = 0.78;
 const tmpM = new THREE.Matrix4(), tmpM2 = new THREE.Matrix4(), tmpQ = new THREE.Quaternion(), tmpE = new THREE.Euler();
 const tmpV = new THREE.Vector3(), tmpS = new THREE.Vector3(1, 1, 1), tmpC = new THREE.Color();
@@ -269,9 +293,22 @@ export class Renderer3D {
       blackwood: tm(T.darkwood, 0x3a302a, 0.6, 0.6),
       paper: this.std({ map: T.cloth, color: 0xf4efe2, roughness: 0.9, emissive: 0x403020, emissiveIntensity: 0.25 }),
       clay: this.std({ color: 0xb8673a, roughness: 0.8 }),
+      copper: this.std({ color: 0x5f9e8a, metalness: 0.6, roughness: 0.45 }),
+      concrete: tm(T.plaster, 0xa8a8a2, 0.95, 0.6),
+      brick: tm(T.mudbrick, 0xc8765a, 0.9, 0.9),
+      steel: this.std({ color: 0x8a9096, metalness: 0.7, roughness: 0.4, side: THREE.DoubleSide }),
+      steelRibbed: tm(T.planks, 0x9aa2aa, 0.45, 1.2, { metalness: 0.6, side: THREE.DoubleSide }),
+      redSteel: this.std({ color: 0xb8402a, metalness: 0.5, roughness: 0.45 }),
+      glassDark: this.std({ color: 0x2a3a48, metalness: 0.4, roughness: 0.12, emissive: 0x3a5a70, emissiveIntensity: 0.3 }),
+      asphalt: this.std({ color: 0x2c2e30, roughness: 0.95 }),
+      paint: this.std({ color: 0xf2f2ee, roughness: 0.5 }),
+      sandbag: this.std({ map: T.cloth, color: 0xb8a070, roughness: 1 }),
+      travertine: tm(T.stucco, 0xf0e4cc, 0.9, 0.6, { side: THREE.DoubleSide }),
+      lacquer: this.std({ color: 0xb8301e, roughness: 0.4 }),
     };
     // matériaux d'équipe
     this.teams = this.game.players.map((p) => ({
+      glow: patchWorld(new THREE.MeshBasicMaterial({ color: new THREE.Color(p.color).lerp(new THREE.Color(0xffffff), 0.35) }), this.U),
       cloth: this.std({ map: T.cloth, color: new THREE.Color(p.color), roughness: 0.85 }),
       banner: this.std({ map: T.cloth, color: new THREE.Color(p.color), roughness: 0.85, side: THREE.DoubleSide }, { banner: true }),
     }));
@@ -364,6 +401,7 @@ export class Renderer3D {
       leather: this.std({ roughness: 0.65 }, fogOpt),
       wood: this.std({ map: T.darkwood.map, roughness: 0.8 }, fogOpt),
       gold: this.std({ metalness: 1, roughness: 0.28 }, fogOpt),
+      glow: patchWorld(new THREE.MeshBasicMaterial({ color: 0xffffff }), this.U),
     };
     this.unitDefs = {};
     this.parts = new Map(); // clé géométrie|matériau → { mesh, n }
@@ -413,8 +451,18 @@ export class Renderer3D {
     B.root.compose(tmpV.set(x, y, z), tmpQ.setFromEuler(tmpE.set(0, yaw, 0)), tmpS.set(scale, scale, scale));
     if (dead) { B.root.multiply(tmpM.makeTranslation(0, 0.12, 0)).multiply(tmpM.makeRotationZ(Math.PI / 2 * Math.min(1, dead * 4))); }
     const cls = def.cls;
+    if (cls === 'air') {
+      const alt = type === 'bomber' ? 3.4 : 2.3;
+      B.root.compose(tmpV.set(x, y + (dead ? Math.max(0, alt - dead * alt) : alt + Math.sin(t * 1.7) * 0.06), z), tmpQ.setFromEuler(tmpE.set(dead ? 0.6 : 0, yaw, st.bank || 0, 'YXZ')), tmpS.set(scale, scale, scale));
+      if (type === 'bomber') B.tool.copy(B.root).multiply(tmpM.makeTranslation(0, 0, 0.78)).multiply(tmpM2.makeRotationZ(t * 45));
+      else B.tool.copy(B.root);
+      return;
+    }
     if (cls === 'siege') {
       const sw = st.swing;
+      if (type === 'tank') { B.tool.copy(B.root).multiply(tmpM.makeTranslation(0, 0.45, sw > 0 ? -Math.sin(sw * Math.PI) * 0.06 : 0)).multiply(tmpM2.makeRotationY(st.turret || 0)); return; }
+      if (type === 'trebuchet') { B.tool.copy(B.root).multiply(tmpM.makeTranslation(0, 1.12, 0)).multiply(tmpM2.makeRotationX(sw > 0 ? 0.75 - Math.sin(Math.min(1, sw * 1.4) * Math.PI / 2) * 2.4 : 0.75)); return; }
+      if (type === 'cannon' || type === 'field_gun') { B.tool.copy(B.root).multiply(tmpM.makeTranslation(0, 0.4, 0.05 - (sw > 0 ? Math.sin(sw * Math.PI) * 0.15 : 0))).multiply(tmpM2.makeRotationX(-0.1)); return; }
       if (type === 'ram') B.tool.copy(B.root).multiply(tmpM.makeTranslation(0, 0.5, sw > 0 ? Math.sin(sw * Math.PI) * 0.25 : 0));
       else if (type === 'mangonel') B.tool.copy(B.root).multiply(tmpM.makeTranslation(0, 0.3, -0.12)).multiply(tmpM2.makeRotationX(-1.2 + (sw > 0 ? Math.sin(Math.min(1, sw * 1.6) * Math.PI / 2) * 1.7 : 0)));
       else B.tool.copy(B.root).multiply(tmpM.makeTranslation(0, 0.45, 0.1 - (sw > 0 ? Math.sin(sw * Math.PI) * 0.1 : 0))).multiply(tmpM2.makeRotationX(-0.12));
@@ -450,7 +498,13 @@ export class Renderer3D {
     if (type === 'spearman' || type === 'royal_guard') { aR = -0.35; toolA = 0.4; }
     if (type === 'archer' || type === 'crossbowman') { aL = -0.5; aR = -0.3; }
     if (type === 'slinger') { aR = -0.2; toolA = 0.2; }
-    if (sw > 0) {
+    const gun = GUNS.has(type);
+    if (gun) { aR = -0.55; aL = -0.45; toolA = 1.0; }
+    if (gun && st.aim) { aR = -1.5; aL = -1.35; toolA = 1.57; lz = 0.02; }
+    if (type === 'robot') { aL = st.aim ? -1.4 : -0.3; aR = st.aim ? -1.5 : -0.3; toolA = 1.57; }
+    if (sw > 0 && (gun || type === 'robot')) {
+      lz = -Math.max(0, 1 - sw * 3) * 0.05;
+    } else if (sw > 0) {
       const e = sw < 0.35 ? sw / 0.35 : 1 - (sw - 0.35) / 0.65;
       if (type === 'archer' || type === 'crossbowman' || type === 'skirmisher' || type === 'chariot') { aL = -1.45; aR = -1.4 + e * 0.3; lz = e * 0.1; toolA = type === 'skirmisher' ? 1.4 - e : toolA; }
       else if (type === 'slinger') { aR = -2.6 - Math.sin(sw * Math.PI * 4) * 0.6; toolA = 0.3 + e * 2; aL = -0.4; }
@@ -473,7 +527,7 @@ export class Renderer3D {
 
   emitUnit(u, type, owner, x, y, z, yaw, st, dead = 0) {
     const def = UNITS[type];
-    const scale = def.cls === 'siege' ? 0.85 : HUMAN_SCALE;
+    const scale = unitScale(type);
     this.pose(type, st, x, y, z, yaw, scale, dead);
     const tc = this.teamColors[owner] || { team: tmpC.set(0x888888), teamDk: tmpC };
     const civ = this.civOf(owner);
@@ -515,7 +569,7 @@ export class Renderer3D {
       st.lx = x; st.ly = z;
       const moving = dist > 0.0005;
       st.walk += ((moving ? 1 : 0) - st.walk) * Math.min(1, dt * 10);
-      st.phase += dist * (UNITS[u.type].cls === 'cavalry' ? 6 : 10.5);
+      st.phase += dist * (UNITS[u.type].cls === 'cavalry' ? 6 : u.type === 'robot' ? 5 : 10.5);
       let targetYaw = st.yaw;
       if (moving && dist > 0.002) targetYaw = Math.atan2(dx, dz);
       const o = u.order;
@@ -523,6 +577,9 @@ export class Renderer3D {
       if ((u.working || u.atkAnim > 0) && tgt) targetYaw = Math.atan2(tgt.x - x, tgt.y - z);
       st.yaw = lerpAngle(st.yaw, targetYaw, Math.min(1, dt * 9));
       st.swing = u.atkAnim > 0 ? 1 - u.atkAnim / 0.35 : 0;
+      st.aim = !!(o && o.kind === 'attack' && (u.working || u.atkAnim > 0));
+      if (UNITS[u.type].cls === 'air') { const dy = lerpAngle(0, targetYaw - st.yaw, 1); st.bank = (st.bank || 0) + (Math.max(-0.6, Math.min(0.6, -dy * 1.5)) - (st.bank || 0)) * Math.min(1, dt * 3); }
+      if (u.type === 'tank') { const want = tgt ? lerpAngle(0, Math.atan2(tgt.x - x, tgt.y - z) - st.yaw, 1) : 0; st.turret = lerpAngle(st.turret || 0, want, Math.min(1, dt * 4)); }
       st.work = u.working && u.type === 'villager' ? 1 : 0;
       st.toolKind = null;
       if (u.type === 'villager' && o) {
@@ -746,6 +803,15 @@ export class Renderer3D {
     this.balls = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(0.09, 1), this.std({ color: 0x55504a, roughness: 0.8, flatShading: true }), 80);
     this.balls.frustumCulled = false; this.balls.count = 0; this.balls.castShadow = true;
     this.scene.add(this.arrows, this.balls);
+    // balles traçantes et faisceaux
+    const tracerGeo = new THREE.BoxGeometry(0.03, 0.03, 0.55);
+    this.tracers = new THREE.InstancedMesh(tracerGeo, new THREE.MeshBasicMaterial({ color: 0xffe9a0, transparent: true, opacity: 0.9 }), 400);
+    this.tracers.frustumCulled = false; this.tracers.count = 0;
+    const beamGeo = new THREE.CylinderGeometry(0.04, 0.04, 1, 8); beamGeo.rotateX(Math.PI / 2);
+    this.beams = new THREE.InstancedMesh(beamGeo, new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.95, blending: THREE.AdditiveBlending, depthWrite: false }), 200);
+    this.beams.frustumCulled = false; this.beams.count = 0;
+    this.beams.setColorAt(0, new THREE.Color(1, 1, 1));
+    this.scene.add(this.tracers, this.beams);
     this.rubble = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(0.12, 0), this.std({ color: 0x7a6e60, roughness: 0.95, flatShading: true }), 1500);
     this.rubble.frustumCulled = false; this.rubble.count = 0; this.rubble.castShadow = true; this.rubble.receiveShadow = true;
     this.scene.add(this.rubble);
@@ -769,7 +835,8 @@ export class Renderer3D {
     if (!t) {
       const def = BUILDINGS[type];
       const team = this.teams[owner] || this.teams[0];
-      t = civ !== 'francs' && !def.farm && !def.wall ? civBuildingModel(type, def.size, this.M, team, civ) : buildingModel(type, def.size, this.M, team);
+      if (EXTRA_TYPES.has(type)) t = extraBuildingModel(type, def.size, this.M, team, civ);
+      else t = civ !== 'francs' && !def.farm && !def.wall ? civBuildingModel(type, def.size, this.M, team, civ) : buildingModel(type, def.size, this.M, team);
       this.templates.set(key, t);
     }
     return t;
@@ -789,6 +856,7 @@ export class Renderer3D {
       let c = g; for (const i of path) c = c.children[i];
       anim.blades = c;
     }
+    if (tan.rocket) anim.rocket = g.getObjectByName('rocket');
     g.userData = { anim, smoke: tan.smoke || [], forge: tan.forge || null };
     return g;
   }
@@ -851,6 +919,17 @@ export class Renderer3D {
       // animations
       const an = e.group.userData.anim;
       if (an && an.blades) an.blades.rotation.z += dt * 0.9;
+      if (an && an.rocket) {
+        // décollage de la fusée dans les dernières secondes du compte à rebours
+        const left = b.countdown;
+        if (left !== undefined && left < 12) {
+          const k = 12 - left;
+          an.rocket.position.y = 0.1 + Math.max(0, k - 3) ** 2.2 * 0.12;
+          const rx = b.tx + an.rocket.position.x, rz = b.ty + an.rocket.position.z, ry = e.base + an.rocket.position.y;
+          for (let i = 0; i < 6; i++) this.fire.emit(rx + (Math.random() - 0.5) * 0.3, ry, rz + (Math.random() - 0.5) * 0.3, (Math.random() - 0.5) * 0.6, -1.5 - Math.random(), (Math.random() - 0.5) * 0.6, 0.6, 0.6, 0.2, [1, 0.8, 0.4, 1], [1, 0.3, 0.05, 0]);
+          for (let i = 0; i < 3; i++) this.smoke.emit(rx + (Math.random() - 0.5) * 0.8, e.base + 0.3 + Math.max(0, ry - e.base - 1) * Math.random() * 0.5, rz + (Math.random() - 0.5) * 0.8, (Math.random() - 0.5) * 1.6, 0.3, (Math.random() - 0.5) * 1.6, 5, 0.8, 3.2, [0.92, 0.9, 0.88, 0.6], [0.7, 0.7, 0.7, 0]);
+        }
+      }
       if (b.built && g.players[me].visible[Math.floor(b.y) * g.map.w + Math.floor(b.x)]) {
         e.emitT -= dt;
         if (e.emitT <= 0) {
@@ -931,31 +1010,59 @@ export class Renderer3D {
     }
     this.rubble.count = rn; this.rubble.instanceMatrix.needsUpdate = true;
     // projectiles
-    let an = 0, bn = 0;
+    let an = 0, bn = 0, tn = 0, ln = 0;
     for (const pr of g.projectiles) {
       if (pr.owner !== this.me && !vis[Math.floor(pr.y) * W + Math.floor(pr.x)]) continue;
       const k = Math.min(1, pr.t / pr.dur);
+      const h0 = this.heightAt(pr.x0, pr.y0) + (pr.air0 ? 2.9 : pr.fromBuilding ? 1.6 : 0.55), h1 = this.heightAt(pr.tx, pr.ty) + (pr.air1 ? 2.9 : 0.3);
       const pos = (kk) => {
         const x = pr.x0 + (pr.tx - pr.x0) * kk, z = pr.y0 + (pr.ty - pr.y0) * kk;
-        const h0 = this.heightAt(pr.x0, pr.y0) + 0.55, h1 = this.heightAt(pr.tx, pr.ty) + 0.3;
-        return tmpV.set(x, h0 + (h1 - h0) * kk + Math.sin(kk * Math.PI) * pr.arc * 0.8, z).clone();
+        const y = pr.kind === 'bomb' ? h0 - (h0 - h1) * kk * kk : h0 + (h1 - h0) * kk + Math.sin(kk * Math.PI) * pr.arc * 0.8;
+        return new THREE.Vector3(x, y, z);
       };
       const p0 = pos(k), p1 = pos(Math.min(1, k + 0.03));
+      // éclair de bouche à la création du projectile
+      if (!this.seenFx.has(pr)) {
+        this.seenFx.add(pr);
+        const s0 = pos(0), dir = pos(0.05).sub(s0).normalize();
+        if (pr.kind === 'bullet' || pr.kind === 'shell') {
+          const big = pr.kind === 'shell';
+          this.fire.emit(s0.x + dir.x * 0.3, s0.y, s0.z + dir.z * 0.3, dir.x, 0.1, dir.z, big ? 0.18 : 0.07, big ? 0.9 : 0.28, 0.05, [1, 0.9, 0.5, 1], [1, 0.4, 0.1, 0]);
+          this.smoke.emit(s0.x + dir.x * 0.4, s0.y, s0.z + dir.z * 0.4, dir.x * 0.4, 0.2, dir.z * 0.4, big ? 2.2 : 1.1, big ? 0.5 : 0.18, big ? 1.6 : 0.6, [0.85, 0.85, 0.82, big ? 0.6 : 0.35], [0.7, 0.7, 0.7, 0]);
+        } else if (pr.kind === 'laser') {
+          this.fire.emit(s0.x, s0.y, s0.z, 0, 0, 0, 0.12, 0.5, 0.1, [0.6, 0.95, 1, 1], [0.3, 0.6, 1, 0]);
+        }
+      }
       if (pr.kind === 'arrow' || pr.kind === 'javelin') {
         if (an >= this.arrows.instanceMatrix.count) continue;
         tmpM.lookAt(p1, p0, UP); tmpM.setPosition(p0);
         if (pr.kind === 'javelin') tmpM.scale(tmpS.set(1.3, 1.3, 1.8));
         this.arrows.setMatrixAt(an++, tmpM);
+      } else if (pr.kind === 'bullet') {
+        if (tn >= this.tracers.instanceMatrix.count) continue;
+        tmpM.lookAt(p1, p0, UP); tmpM.setPosition(p0);
+        this.tracers.setMatrixAt(tn++, tmpM);
+      } else if (pr.kind === 'laser') {
+        if (ln >= this.beams.instanceMatrix.count) continue;
+        const a0 = pos(0), a1 = pos(1);
+        const len = a0.distanceTo(a1);
+        tmpM.lookAt(a1, a0, UP); tmpM.setPosition(a0.clone().add(a1).multiplyScalar(0.5)); tmpM.scale(tmpS.set(1 - k * 0.6, 1 - k * 0.6, len));
+        this.beams.setMatrixAt(ln, tmpM);
+        this.beams.setColorAt(ln++, tmpC.set(g.players[pr.owner] ? g.players[pr.owner].color : '#ffffff').lerp(new THREE.Color(0xffffff), 0.45));
+        if (Math.random() < 0.5) this.fire.emit(a1.x, a1.y, a1.z, (Math.random() - 0.5), Math.random(), (Math.random() - 0.5), 0.25, 0.25, 0.05, [0.7, 0.95, 1, 1], [0.3, 0.5, 1, 0]);
       } else {
         if (bn >= this.balls.instanceMatrix.count) continue;
         tmpM.makeTranslation(p0.x, p0.y, p0.z);
-        if (pr.kind === 'ball') tmpM.scale(tmpS.set(0.8, 0.8, 0.8));
+        if (pr.kind === 'ball' || pr.kind === 'shell') tmpM.scale(tmpS.set(0.7, 0.7, 0.7));
+        if (pr.kind === 'bomb') tmpM.scale(tmpS.set(1.1, 1.6, 1.1));
         if (pr.kind === 'pebble') tmpM.scale(tmpS.set(0.35, 0.35, 0.35));
         this.balls.setMatrixAt(bn++, tmpM);
         if (pr.kind !== 'pebble' && Math.random() < 0.5) this.smoke.emit(p0.x, p0.y, p0.z, 0, 0.1, 0, 0.8, 0.15, 0.5, [0.6, 0.6, 0.6, 0.4], [0.6, 0.6, 0.6, 0]);
       }
     }
-    this.arrows.count = an; this.balls.count = bn;
+    this.arrows.count = an; this.balls.count = bn; this.tracers.count = tn; this.beams.count = ln;
+    this.tracers.instanceMatrix.needsUpdate = true; this.beams.instanceMatrix.needsUpdate = true;
+    if (this.beams.instanceColor) this.beams.instanceColor.needsUpdate = true;
     this.arrows.instanceMatrix.needsUpdate = true; this.balls.instanceMatrix.needsUpdate = true;
   }
 
@@ -1154,9 +1261,10 @@ export class Renderer3D {
     const px = 1 / this.worldPerPixel();
     for (const u of g.units) {
       if (u.dead || (u.owner !== me && !pl.visible[Math.floor(u.y) * W + Math.floor(u.x)])) continue;
-      const big = UNITS[u.type].cls === 'cavalry' || UNITS[u.type].cls === 'siege';
-      const p = this.toScreen(u.x, u.y, big ? 0.4 : 0.3);
-      const rad = Math.max(10, (big ? 0.45 : 0.3) * px);
+      const cls = UNITS[u.type].cls;
+      const big = cls === 'cavalry' || cls === 'siege' || cls === 'mech' || cls === 'air';
+      const p = this.toScreen(u.x, u.y, unitMidHeight(u.type));
+      const rad = Math.max(10, (cls === 'air' || cls === 'mech' ? 0.7 : big ? 0.45 : 0.3) * px);
       const d = Math.hypot(sx - p.x, (sy - p.y) * 0.8);
       if (d < rad && d - p.z * 0.001 < bestD) { bestD = d; best = u; }
     }
@@ -1236,8 +1344,7 @@ export class Renderer3D {
       if (!sel && u.hp >= u.maxHp) continue;
       if (u.owner !== me && !vis[Math.floor(u.y) * W + Math.floor(u.x)]) continue;
       const st = this.unitState.get(u.id);
-      const big = UNITS[u.type].cls === 'cavalry' || UNITS[u.type].cls === 'siege';
-      const p = this.toScreen(st ? st.lx : u.x, st ? st.ly : u.y, big ? 1.0 : 0.82);
+      const p = this.toScreen(st ? st.lx : u.x, st ? st.ly : u.y, unitTopHeight(u.type));
       if (p.z > 1) continue;
       bar(p.x, p.y - 6, Math.max(18, 26 * Math.min(1.3, zoom)), Math.max(0, u.hp / u.maxHp));
     }
@@ -1246,7 +1353,7 @@ export class Renderer3D {
       const sel = ui.selected.has(b.id);
       if (!sel && b.hp >= b.maxHp && b.built) continue;
       if (!g.isVisible(me, b) || BUILDINGS[b.type].wall && !sel) continue;
-      const hh = { tower: 3.9, fortress: 4.2, town_center: 5.3, mill: 2.6 }[b.type] || (BUILDINGS[b.type].farm ? 0.4 : 1.2 + b.size * 0.5);
+      const hh = { tower: 3.9, fortress: 4.2, town_center: 5.3, mill: 2.6, wonder: 5.2, space_program: 5.0, factory: 3.6, laser_turret: 2.3 }[b.type] || (BUILDINGS[b.type].farm ? 0.4 : 1.2 + b.size * 0.5);
       const p = this.toScreen(b.x, b.y, hh * (b.built ? 1 : Math.max(0.3, b.progress)));
       if (p.z > 1) continue;
       bar(p.x, p.y - 10, Math.max(40, (24 + b.size * 18) * Math.min(1.2, zoom)), Math.max(0, b.hp / b.maxHp), b.built ? undefined : b.progress);
@@ -1355,8 +1462,7 @@ export class Renderer3D {
     // modèle non instancié d'une unité (pour les portraits)
     const grp = new THREE.Group();
     const st = { yaw: 0, phase: 0, walk: 0, seed: 0.3, swing: 0, work: 0, lean: 0, toolKind: type === 'villager' ? 'axe' : null, carry: null };
-    const def = UNITS[type];
-    this.pose(type, st, 0, 0, 0, 0, def.cls === 'siege' ? 0.85 : HUMAN_SCALE);
+    this.pose(type, st, 0, 0, 0, 0, unitScale(type));
     const tc = this.teamColors[owner] || this.teamColors[0];
     const skins = this.civSkins[civ] || this.skins;
     for (const pt of this.partsFor(type, civ)) {

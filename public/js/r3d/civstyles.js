@@ -43,6 +43,7 @@ export function hipGeo(w, d, h, den = 1.2) {
 
 // ------------------------------------------------------------------ kits de style
 export const KITS = {
+  francs: { mason: 'stone', wall: 'stone', base: 'darkstone', roof: 'gable', roofMat: 'tile', pitch: 0.9, door: 'arch', tower: 'square' },
   romains: { mason: 'marble', wall: 'stucco', base: 'marble', roof: 'hip', roofMat: 'tile', pitch: 0.4, door: 'arch', tower: 'square' },
   egyptiens: { mason: 'sandstone', wall: 'mudbrick', base: 'sandstone', roof: 'flat', taper: 0.1, door: 'trap', tower: 'pylon' },
   incas: { mason: 'ashlar', wall: 'ashlar', base: 'ashlar', roof: 'hip', roofMat: 'thatch', pitch: 1.15, taper: 0.05, door: 'trap', tower: 'round' },
@@ -286,6 +287,8 @@ class Style {
     }
   }
 }
+
+export function civStyle(civ, M, team) { return new Style(KITS[civ] ? civ : 'francs', M, team); }
 
 // ------------------------------------------------------------------ bâtiments des civilisations
 export function civBuildingModel(type, s, M, team, civ) {

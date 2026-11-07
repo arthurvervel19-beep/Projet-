@@ -676,7 +676,7 @@ export class AudioEngine {
     const ctx = this.ctx;
     if (!ctx || this.muted || vol <= 0.02) return;
     const now = ctx.currentTime;
-    const minGap = { chop: 0.12, mine: 0.12, hammer: 0.15, hit: 0.06, arrow: 0.05, death: 0.15, grunt: 0.25, bleat: 1.5 }[kind] ?? 0.08;
+    const minGap = { chop: 0.12, mine: 0.12, hammer: 0.15, hit: 0.06, arrow: 0.05, death: 0.15, grunt: 0.25, bleat: 1.5, gunshot: 0.05, mg: 0.06, laser: 0.07, cannon: 0.12 }[kind] ?? 0.08;
     if (this.lastSfx[kind] && now - this.lastSfx[kind] < minGap) return;
     if (this.active > 26) return;
     this.lastSfx[kind] = now;
@@ -722,6 +722,39 @@ export class AudioEngine {
       case 'boom': {
         const g = gn(0.85, 0.003, 0.8); const b = this.filt('lowpass', 320); b.connect(g); this.noiseSrc(t, t + 0.9, b);
         const g2 = gn(0.65, 0.002, 0.55); const o = ctx.createOscillator(); o.frequency.setValueAtTime(95, t); o.frequency.exponentialRampToValueAtTime(32, t + 0.45); o.connect(g2); o.start(t); o.stop(t + 0.65);
+        break;
+      }
+      case 'gunshot': {
+        // détonation : claquement filtré + queue grave
+        const g = gn(0.7, 0.001, 0.12); const b = this.filt('bandpass', 1400 + r * 600, 0.8); b.connect(g); this.noiseSrc(t, t + 0.15, b);
+        const g2 = gn(0.5, 0.001, 0.25); const lp = this.filt('lowpass', 500); lp.connect(g2); this.noiseSrc(t, t + 0.3, lp);
+        const g3 = gn(0.4, 0.001, 0.08); const o = ctx.createOscillator(); o.frequency.setValueAtTime(160, t); o.frequency.exponentialRampToValueAtTime(50, t + 0.08); o.connect(g3); o.start(t); o.stop(t + 0.12);
+        break;
+      }
+      case 'mg': {
+        for (let i = 0; i < 4; i++) {
+          const tt = t + i * 0.075;
+          const g = this.gain(); this.env(g, tt, 0.001, 0.45 * vol, 0, 0.07); g.connect(out);
+          const b = this.filt('bandpass', 1600 + Math.random() * 500, 0.9); b.connect(g); this.noiseSrc(tt, tt + 0.09, b);
+        }
+        const g2 = gn(0.35, 0.002, 0.4); const lp = this.filt('lowpass', 400); lp.connect(g2); this.noiseSrc(t, t + 0.45, lp);
+        break;
+      }
+      case 'cannon': {
+        const g = gn(1.0, 0.002, 0.9); const lp = this.filt('lowpass', 700); lp.connect(g); this.noiseSrc(t, t + 1, lp);
+        const g2 = gn(0.8, 0.001, 0.5); const o = ctx.createOscillator(); o.frequency.setValueAtTime(110, t); o.frequency.exponentialRampToValueAtTime(35, t + 0.4); o.connect(g2); o.start(t); o.stop(t + 0.6);
+        const g3 = gn(0.5, 0.001, 0.05); const hp = this.filt('highpass', 2000); hp.connect(g3); this.noiseSrc(t, t + 0.06, hp);
+        break;
+      }
+      case 'laser': {
+        const g = gn(0.22, 0.002, 0.22);
+        const o = ctx.createOscillator(); o.type = 'sawtooth'; o.frequency.setValueAtTime(2400 + r * 400, t); o.frequency.exponentialRampToValueAtTime(260, t + 0.22);
+        const bp = this.filt('bandpass', 1800, 1.5); o.connect(bp); bp.connect(g); o.start(t); o.stop(t + 0.25);
+        const g2 = gn(0.15, 0.002, 0.15); const o2 = ctx.createOscillator(); o2.type = 'square'; o2.frequency.setValueAtTime(880, t); o2.frequency.exponentialRampToValueAtTime(110, t + 0.15); const lp = this.filt('lowpass', 2000); o2.connect(lp); lp.connect(g2); o2.start(t); o2.stop(t + 0.18);
+        break;
+      }
+      case 'bombdrop': {
+        const g = gn(0.18, 0.05, 0.7); const o = ctx.createOscillator(); o.type = 'sine'; o.frequency.setValueAtTime(1800, t); o.frequency.exponentialRampToValueAtTime(400, t + 0.7); o.connect(g); o.start(t); o.stop(t + 0.8);
         break;
       }
       case 'death': this.scream(vol, pan); break;

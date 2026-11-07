@@ -1,7 +1,7 @@
 // Moteur de simulation du jeu (sans DOM : utilisable dans le navigateur et dans Node).
 import {
   UNITS, BUILDINGS, TECHS, AGES, RESOURCE_DEFS, GATHER_RATE, RESOURCES, TERRAIN, REACH,
-  PLAYER_COLORS, PLAYER_NAMES, MAX_POP, defaultMods, CIVS, CIV_IDS,
+  PLAYER_COLORS, PLAYER_NAMES, MAX_POP, defaultMods, CIVS, CIV_IDS, WONDER_TIME, LAUNCH_TIME,
 } from './config.js';
 import { PathFinder, distToRect } from './pathfinding.js';
 import { generateMap, mulberry32 } from './map.js';
@@ -132,7 +132,7 @@ export class Game {
 
   pushUnitsOut(b) {
     for (const u of this.units) {
-      if (u.dead) continue;
+      if (u.dead || this.isAir(u)) continue;
       if (u.x >= b.tx - 0.2 && u.x <= b.tx + b.size + 0.2 && u.y >= b.ty - 0.2 && u.y <= b.ty + b.size + 0.2) {
         if (this.map.walkable(Math.floor(u.x), Math.floor(u.y))) continue;
         const spot = this.findFreeSpot(b, u.x, u.y);
@@ -174,7 +174,13 @@ export class Game {
       if (m.armor[d.cls]) { s.armor[0] += m.armor[d.cls][0]; s.armor[1] += m.armor[d.cls][1]; }
     }
     s.rof *= m.rof[d.cls] || 1;
-    s.speed *= m.speed[d.cls] || 1;
+    s.speed *= (m.speed[d.cls] || 1) * m.speedAll;
+    if (d.cls !== 'villager') {
+      s.atk += m.atkAll + (d.gunpowder ? m.gunAtk : 0);
+      if (d.gunpowder && d.range > 0) s.range += m.gunRange;
+      s.armor[0] += m.armorAll[0]; s.armor[1] += m.armorAll[1];
+    }
+    s.los += m.losAll;
     p.statCache[type] = s;
     return s;
   }
@@ -183,7 +189,7 @@ export class Game {
     const a = BUILDINGS[b.type].attack;
     if (!a) return null;
     const m = this.players[b.owner].mods;
-    return { atk: a.atk + m.atk.building, range: a.range + m.range.building, rof: a.rof, atkType: 'pierce', bonus: {}, projectile: 'arrow' };
+    return { atk: a.atk + m.atk.building, range: a.range + m.range.building, rof: a.rof, atkType: 'pierce', bonus: {}, projectile: a.kind || 'arrow', kind: a.kind || 'arrow' };
   }
 
   armorOf(e) {
@@ -217,6 +223,11 @@ export class Game {
   }
 
   isEnemy(a, b) { return a >= 0 && b >= 0 && a !== b; }
+
+  isAir(e) { return e && e.kind === 'unit' && UNITS[e.type].cls === 'air'; }
+
+  // une unité de mêlée ne peut pas frapper un avion
+  canHit(st, t) { return !(this.isAir(t) && !(st.range > 0)); }
 
   resTypeOf(e) {
     if (!e) return null;
@@ -268,6 +279,7 @@ export class Game {
     const def = BUILDINGS[type];
     const s = def.size, W = this.map.w;
     const p = this.players[owner];
+    if (def.unique && this.buildings.some((b) => !b.dead && b.owner === owner && b.type === type)) return false;
     for (let y = ty; y < ty + s; y++) {
       for (let x = tx; x < tx + s; x++) {
         if (x < 0 || y < 0 || x >= W || y >= this.map.h) return false;
@@ -314,6 +326,7 @@ export class Game {
         units.forEach((u) => {
           const st = this.unitStats(u.owner, u.type);
           if (st.onlyBuildings && t.kind !== 'building') return;
+          if (!this.canHit(st, t)) return;
           u.order = { kind: 'attack', target: t.id }; u.path = null;
         });
         return true;
@@ -340,6 +353,12 @@ export class Game {
         return true;
       }
       case 'market': return this.cmdMarket(owner, cmd.action, cmd.res);
+      case 'factoryMode': {
+        const b = this.get(cmd.building);
+        if (!b || b.owner !== owner || !BUILDINGS[b.type].factory || !RESOURCES.includes(cmd.res)) return false;
+        b.mode = cmd.res;
+        return true;
+      }
       default: return false;
     }
   }
@@ -410,6 +429,7 @@ export class Game {
     const p = this.players[owner];
     const def = BUILDINGS[type];
     if (!def || !this.hasAge(p, def.age)) return false;
+    if (def.unique && this.buildings.some((b) => !b.dead && b.owner === owner && b.type === type)) { this.msg(owner, `Vous ne pouvez construire qu'un seul bâtiment « ${def.name} ».`, 'warn'); return false; }
     if (!this.canPlace(owner, type, tx, ty)) { this.msg(owner, 'Emplacement invalide.', 'warn'); return false; }
     if (!this.canAfford(p, def.cost)) { this.msg(owner, this.missingText(p, def.cost), 'warn'); return false; }
     this.pay(p, def.cost);
@@ -511,7 +531,11 @@ export class Game {
     if (this.winner !== null) return;
     this.time += dt;
     for (const u of this.units) { u.px = u.x; u.py = u.y; }
-    for (const u of this.units) if (!u.dead) this.updateUnit(u, dt);
+    for (const u of this.units) {
+      if (u.dead) continue;
+      this.updateUnit(u, dt);
+      if (u.owner >= 0 && u.hp < u.maxHp) { const rg = this.players[u.owner].mods.regen; if (rg) u.hp = Math.min(u.maxHp, u.hp + rg * dt); }
+    }
     this.separate();
     for (const b of this.buildings) if (!b.dead) this.updateBuilding(b, dt);
     this.updateProjectiles(dt);
@@ -561,9 +585,23 @@ export class Game {
   }
 
   // Se rapproche d'une entité. Retourne true (à portée), false (en route) ou null (inaccessible)
+  // vol direct (unités aériennes)
+  flyTo(u, x, y, dt) {
+    const dx = x - u.x, dy = y - u.y, d = Math.hypot(dx, dy);
+    const sp = this.unitStats(u.owner, u.type).speed * dt;
+    if (d < 0.01) { u.moving = false; return true; }
+    u.dir = dx - dy >= 0 ? 1 : -1;
+    if (d <= sp) { u.x = x; u.y = y; u.moving = false; return true; }
+    u.x += dx / d * sp; u.y += dy / d * sp;
+    u.x = Math.max(0.2, Math.min(this.map.w - 0.2, u.x)); u.y = Math.max(0.2, Math.min(this.map.h - 0.2, u.y));
+    u.moving = true;
+    return false;
+  }
+
   approach(u, e, range, dt) {
     const d = this.distTo(u, e);
     if (d <= range + 0.05) { u.path = null; u.moving = false; u.pathFail = 0; return true; }
+    if (this.isAir(u)) { this.flyTo(u, e.x, e.y, dt); return false; }
     const needPath = !u.path || u.pathI >= u.path.length || (e.kind === 'unit' && this.time >= u.repathAt);
     if (needPath) {
       if (u.pathFail > 0 && this.time < u.retryAt) { u.moving = false; return false; }
@@ -586,14 +624,14 @@ export class Game {
     const cell = new Map();
     const key = (x, y) => (Math.floor(x) << 16) | Math.floor(y);
     for (const u of this.units) {
-      if (u.dead) continue;
+      if (u.dead || this.isAir(u)) continue;
       const k = key(u.x, u.y);
       let a = cell.get(k);
       if (!a) cell.set(k, a = []);
       a.push(u);
     }
     for (const u of this.units) {
-      if (u.dead) continue;
+      if (u.dead || this.isAir(u)) continue;
       const cx = Math.floor(u.x), cy = Math.floor(u.y);
       for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
         const list = cell.get(((cx + dx) << 16) | (cy + dy));
@@ -656,6 +694,7 @@ export class Game {
         if (t) { u.order = { kind: 'attack', target: t.id, then: o, auto: true }; u.path = null; return; }
       }
     }
+    if (this.isAir(u)) { if (this.flyTo(u, o.x, o.y, dt)) u.order = null; return; }
     if (!u.path) {
       const res = this.pathTo(u, { x0: o.x, y0: o.y, x1: o.x, y1: o.y }, 0);
       // remplace le dernier point par la destination exacte si atteignable
@@ -677,6 +716,7 @@ export class Game {
     let best = null, bestScore = Infinity;
     for (const e of this.units) {
       if (e.dead || !this.isEnemy(u.owner, e.owner) || st.onlyBuildings) continue;
+      if (!this.canHit(st, e)) continue;
       const d = Math.hypot(e.x - u.x, e.y - u.y);
       if (d > radius) continue;
       if (st.minRange && d < st.minRange) continue;
@@ -710,6 +750,7 @@ export class Game {
       return;
     }
     if (o.auto && this.distTo(u, t) > st.los * 2.2) { u.order = o.then || null; u.path = null; return; }
+    if (!this.canHit(st, t)) { u.order = o.then || null; u.path = null; return; }
     const range = st.range > 0 ? st.range : REACH - 0.15 + (t.kind === 'unit' ? u.radius : 0);
     const r = this.approach(u, t, range, dt);
     if (r === null) { u.order = o.then || null; return; }
@@ -719,7 +760,7 @@ export class Game {
     if (u.cooldown <= 0) {
       u.cooldown = st.rof;
       u.atkAnim = 0.35;
-      if (st.range > 0) this.fire(u.owner, u.x, u.y, t, st, st.projectile || 'arrow');
+      if (st.range > 0) this.fire(u.owner, u.x, u.y, t, st, st.projectile || 'arrow', u);
       else { this.damage(t, this.calcDamage(st, t), u.owner, u); this.sfx(u.type === 'villager' ? 'chop' : UNITS[u.type].cls === 'siege' ? 'boom' : 'hit', u.x, u.y); }
     }
   }
@@ -732,14 +773,18 @@ export class Game {
     return Math.max(1, dmg);
   }
 
-  fire(owner, x, y, target, st, kind) {
-    const speed = kind === 'arrow' ? 9 : kind === 'javelin' ? 8 : 5;
+  fire(owner, x, y, target, st, kind, from = null) {
+    const speed = { arrow: 9, javelin: 8, bullet: 38, shell: 11, laser: 80, pebble: 9, bomb: 1 }[kind] || 5;
     const tx = target.x, ty = target.y;
     const d = Math.hypot(tx - x, ty - y);
-    this.sfx(kind === 'arrow' || kind === 'javelin' ? 'arrow' : 'launch', x, y);
+    const sound = { arrow: 'arrow', javelin: 'arrow', pebble: 'arrow', bullet: st.rof < 0.6 ? 'mg' : 'gunshot', shell: 'cannon', laser: 'laser', bomb: 'bombdrop' }[kind] || 'launch';
+    this.sfx(sound, x, y);
+    const dur = kind === 'bomb' ? 0.75 : kind === 'laser' ? 0.1 : Math.max(kind === 'bullet' ? 0.05 : 0.15, d / speed);
+    const flat = kind === 'bullet' || kind === 'laser';
     this.projectiles.push({
-      owner, x0: x, y0: y, x: x, y: y, tx, ty, target: target.id, t: 0, dur: Math.max(0.15, d / speed),
-      st, kind, arc: kind === 'arrow' || kind === 'javelin' ? 0.5 + d * 0.08 : 0.8 + d * 0.15,
+      owner, x0: x, y0: y, x: x, y: y, tx, ty, target: target.id, t: 0, dur,
+      st, kind, arc: flat || kind === 'bomb' ? 0 : kind === 'arrow' || kind === 'javelin' || kind === 'pebble' ? 0.5 + d * 0.08 : 0.8 + d * 0.15,
+      air0: this.isAir(from), air1: this.isAir(target), fromBuilding: from && from.kind === 'building' ? from.id : 0,
     });
   }
 
@@ -978,6 +1023,12 @@ export class Game {
     const p = this.players[b.owner];
     this.recomputePopCap(p);
     p.stats.built++;
+    const bd = BUILDINGS[b.type];
+    if (bd.wonder || bd.space) {
+      b.countdown = bd.space ? LAUNCH_TIME : WONDER_TIME;
+      const mins = Math.round(b.countdown / 60);
+      this.msg(-1, bd.space ? `${p.name} a achevé son programme spatial : lancement dans ${mins} minutes !` : `${p.name} a achevé sa merveille : victoire dans ${mins} minutes si elle tient !`, b.owner === this.humanPlayer ? 'good' : 'alert');
+    }
     if (this.time > 1 && !BUILDINGS[b.type].wall) this.events.push({ type: 'sfx', kind: 'built', x: b.x, y: b.y, player: b.owner, ui: true });
     if (b.owner === this.humanPlayer && this.time > 1 && !BUILDINGS[b.type].farm && !BUILDINGS[b.type].wall) this.msg(b.owner, `${BUILDINGS[b.type].name} terminé(e).`);
   }
@@ -985,20 +1036,37 @@ export class Game {
   recomputePopCap(p) {
     let cap = 0;
     for (const b of this.buildings) if (!b.dead && b.owner === p.id && b.built) cap += (BUILDINGS[b.type].pop || 0) + (b.type === 'house' ? p.mods.housePop : 0);
-    p.popCap = Math.min(MAX_POP, cap);
+    p.popCap = Math.min(p.mods.maxPop || MAX_POP, cap);
   }
 
   // ---------------------------------------------------------------- bâtiments
   updateBuilding(b, dt) {
     if (!b.built) return;
     const p = this.players[b.owner];
+    const bdef = BUILDINGS[b.type];
+    // revenus passifs
+    if (bdef.income) for (const [k, v] of Object.entries(bdef.income)) { const a = v * p.mods.income.bank * dt; p.res[k] += a; p.stats.gathered[k] += a; }
+    if (bdef.factory) { const k = b.mode || 'wood'; const a = 1.5 * p.mods.income.factory * dt; p.res[k] += a; p.stats.gathered[k] += a; }
+    if (p.mods.bregen && b.hp < b.maxHp) b.hp = Math.min(b.maxHp, b.hp + p.mods.bregen * dt);
+    // compte à rebours de victoire (merveille, fusée)
+    if (b.countdown !== undefined && this.winner === null) {
+      b.countdown -= dt;
+      if (b.countdown <= 0) {
+        b.countdown = 0;
+        this.winner = b.owner;
+        this.victoryReason = bdef.space ? 'space' : 'wonder';
+        this.events.push({ type: 'victory', player: b.owner, reason: this.victoryReason });
+        return;
+      }
+    }
     const item = b.queue[0];
     if (item) {
       if (item.kind === 'unit' && p.pop >= p.popCap) {
         if (!item.housed) { item.housed = true; if (b.owner === this.humanPlayer) this.msg(b.owner, 'Population maximale atteinte : construisez des maisons.', 'warn'); }
       } else {
         item.housed = false;
-        item.t += dt;
+        const m = p.mods;
+        item.t += dt * (item.kind === 'tech' || item.kind === 'age' ? m.researchSpeed : item.kind === 'unit' && item.id !== 'villager' ? m.trainSpeed : 1);
         if (item.t >= item.time) { b.queue.shift(); this.completeItem(b, item); }
       }
     }
@@ -1014,7 +1082,7 @@ export class Game {
         }
         if (best) {
           b.cooldown = atk.rof;
-          this.fire(b.owner, b.x, b.y, best, atk, 'arrow');
+          this.fire(b.owner, b.x, b.y, best, atk, atk.kind || 'arrow', b);
         }
       }
     }

@@ -845,8 +845,10 @@ export function unitParts(type, civ = 'francs') {
       break;
     case 'scout':
     case 'knight':
-    case 'paladin': {
-      const coat = type === 'scout' ? C.horseB : type === 'knight' ? C.horseD : C.horseW;
+    case 'paladin':
+    case 'cuirassier':
+    case 'dragoon': {
+      const coat = type === 'scout' || type === 'dragoon' ? C.horseB : type === 'paladin' ? C.horseW : C.horseD;
       // cheval
       add(P('cap', 'leather', coat, 'hbody', [0, 0, 0], [0.4, 0.42, 0.4], [Math.PI / 2, 0, 0]));
       add(P('cap', 'leather', coat, 'hhead', [0, 0.16, 0.02], [0.17, 0.2, 0.2], [0.5, 0, 0]));
@@ -859,22 +861,29 @@ export function unitParts(type, civ = 'francs') {
       }
       add(P('cone', 'cloth', C.hair, 'tail', [0, -0.18, 0], [0.09, 0.4, 0.07], [Math.PI, 0, 0]));
       add(P('box', 'leather', C.leather, 'hbody', [0, 0.2, -0.02], [0.32, 0.06, 0.3]));
-      if (type !== 'scout') {
+      if (type === 'knight' || type === 'paladin') {
         // caparaçon aux couleurs du joueur
         add(P('box', 'cloth', 'team', 'hbody', [0, 0.02, 0], [0.43, 0.32, 0.86]));
         add(P('box', 'cloth', C.gold, 'hbody', [0, -0.14, 0], [0.435, 0.04, 0.865]));
       }
       // cavalier
-      const armor = type === 'scout' ? C.leather : C.metal;
-      const mat = type === 'scout' ? 'leather' : 'metal';
+      const armor = type === 'scout' ? C.leather : type === 'dragoon' ? 'team' : C.metal;
+      const mat = type === 'scout' ? 'leather' : type === 'dragoon' ? 'cloth' : 'metal';
       add(P('taper', mat, armor, 'body', [0, 0.18, 0], [0.3, 0.36, 0.22]));
-      if (type !== 'scout') add(P('box', 'cloth', 'team', 'body', [0, 0.16, 0.08], [0.24, 0.36, 0.08]));
+      if (type === 'knight' || type === 'paladin' || type === 'cuirassier') add(P('box', 'cloth', 'team', 'body', [0, 0.16, 0.08], [0.24, 0.36, 0.08]));
       else add(P('box', 'cloth', 'team', 'body', [0, 0.2, 0], [0.31, 0.06, 0.23], [0, 0, 0.6]));
       add(P('sph', 'skin', 'skin', 'head', [0, 0.1, 0], [0.2, 0.22, 0.2]));
       for (const [b, x] of [['legL', -1], ['legR', 1]]) add(P('cap', mat, armor, b, [x * 0.12, -0.12, 0.08], [0.11, 0.17, 0.11], [-1.1, 0, x * 0.35]));
       for (const b of ['armL', 'armR']) { add(P('cap', mat, armor, b, [0, -0.14, 0], [0.085, 0.16, 0.085])); add(P('sph', 'skin', 'skin', b, [0, -0.31, 0], [0.07, 0.07, 0.07])); }
       if (type === 'scout') { helmet('hair'); sword(0.34); }
-      else {
+      else if (type === 'cuirassier') {
+        add(P('hemi', 'metal', C.metal, 'head', [0, 0.14, 0], [0.24, 0.24, 0.24])); add(P('box', 'cloth', 0x202020, 'head', [0, 0.28, -0.04], [0.04, 0.12, 0.26]));
+        add(P('blade', 'metal', C.metal, 'tool', [0, 0.32, 0], [0.03, 0.55, 0.01])); add(P('box', 'gold', C.gold, 'tool', [0, 0.05, 0], [0.1, 0.02, 0.03]));
+      } else if (type === 'dragoon') {
+        add(P('box', 'cloth', 0x1c1c1c, 'head', [0, 0.2, 0], [0.36, 0.12, 0.14])); add(P('cone', 'cloth', 'team', 'head', [0, 0.3, 0], [0.05, 0.1, 0.05]));
+        add(P('box', 'cloth', 0xf0f0f0, 'body', [0, 0.18, 0.11], [0.05, 0.38, 0.02], [0, 0, 0.6]));
+        add(P('cyl', 'wood', C.wood, 'tool', [0, 0.3, 0], [0.03, 0.62, 0.03])); add(P('cyl', 'metal', C.iron, 'tool', [0, 0.52, 0.015], [0.02, 0.5, 0.02]));
+      } else {
         helmet(type === 'paladin' ? 'great' : 'nasal');
         if (type === 'paladin') plume(C.gold);
         add(P('cyl', 'wood', 'team', 'tool', [0, 0.45, 0], [0.035, 1.7, 0.035]));
@@ -935,6 +944,125 @@ export function unitParts(type, civ = 'francs') {
       for (const b of ['armL', 'armR']) { add(P('cap', 'skin', 'skin', b, [0, -0.14, 0], [0.085, 0.16, 0.085])); }
       for (const b of ['legL', 'legR']) add(P('cap', 'skin', 'skin', b, [b === 'legL' ? -0.08 : 0.08, -0.2, 0], [0.11, 0.2, 0.11]));
       add(P('bow', 'wood', C.wood, 'shield', [0, 0, 0.02], [0.75, 0.75, 0.75], [0, Math.PI / 2, -Math.PI * 0.45]));
+      break;
+    }
+    // ---------------------------------------------------------------- âges avancés
+    case 'musketeer':
+      add(...humanBase({ torso: 'team', legs: C.brown }));
+      add(P('box', 'leather', C.leather, 'body', [0, 0.18, 0.11], [0.05, 0.4, 0.02], [0, 0, 0.6]));
+      add(P('disc', 'cloth', 0x2a2420, 'head', [0, 0.17, 0], [0.44, 0.025, 0.44])); add(P('hemi', 'cloth', 0x2a2420, 'head', [0, 0.17, 0], [0.24, 0.18, 0.24]));
+      add(P('cone', 'cloth', 'team', 'head', [0.1, 0.27, -0.05], [0.04, 0.2, 0.06], [-0.5, 0, -0.4]));
+      add(P('cyl', 'wood', C.wood, 'tool', [0, 0.28, 0], [0.032, 0.62, 0.032])); add(P('cyl', 'metal', C.iron, 'tool', [0, 0.52, 0.018], [0.02, 0.62, 0.02]));
+      break;
+    case 'fusilier':
+      add(...humanBase({ torso: 'team', legs: 0xe8e4da }));
+      add(P('box', 'cloth', 0xf4f4f0, 'body', [0, 0.18, 0.115], [0.05, 0.42, 0.02], [0, 0, 0.6])); add(P('box', 'cloth', 0xf4f4f0, 'body', [0, 0.18, 0.12], [0.05, 0.42, 0.02], [0, 0, -0.6]));
+      add(P('cyl', 'cloth', 0x1c1c1c, 'head', [0, 0.24, 0], [0.21, 0.24, 0.21])); add(P('box', 'leather', 0x101010, 'head', [0, 0.13, 0.1], [0.16, 0.02, 0.08])); add(P('sph', 'cloth', 'team', 'head', [0, 0.38, 0.06], [0.06, 0.08, 0.06]));
+      add(P('cyl', 'wood', C.wood, 'tool', [0, 0.28, 0], [0.03, 0.6, 0.03])); add(P('cyl', 'metal', C.iron, 'tool', [0, 0.52, 0.016], [0.018, 0.55, 0.018])); add(P('cone', 'metal', C.metal, 'tool', [0, 0.86, 0.016], [0.025, 0.2, 0.012]));
+      break;
+    case 'soldier':
+    case 'machine_gunner': {
+      const olive = 0x56603a;
+      add(...humanBase({ torso: olive, sleeve: olive, legs: 0x4a5232 }));
+      add(P('cyl', 'cloth', 'team', 'armL', [0, -0.08, 0], [0.1, 0.05, 0.1]));
+      add(P('hemi', 'metal', 0x4a5530, 'head', [0, 0.12, 0], [0.26, 0.24, 0.27])); add(P('disc', 'metal', 0x4a5530, 'head', [0, 0.12, 0], [0.3, 0.015, 0.3]));
+      add(P('box', 'cloth', 0x5a5230, 'back', [0, 0.04, -0.14], [0.24, 0.26, 0.1]));
+      add(P('box', 'cloth', 0x3a3a2a, 'body', [0, 0.05, 0.1], [0.3, 0.08, 0.04]));
+      if (type === 'soldier') { add(P('box', 'metal', 0x262626, 'tool', [0, 0.3, 0], [0.04, 0.55, 0.06])); add(P('box', 'metal', 0x262626, 'tool', [0, 0.28, 0.06], [0.03, 0.08, 0.06])); }
+      else {
+        add(P('box', 'metal', 0x222222, 'tool', [0, 0.3, 0], [0.07, 0.55, 0.09])); add(P('cyl', 'metal', 0x2a2a2a, 'tool', [0, 0.68, 0], [0.04, 0.3, 0.04]));
+        add(P('box', 'gold', 0xb08a3a, 'tool', [0.06, 0.25, 0], [0.04, 0.2, 0.03])); add(P('box', 'metal', 0x2a2a2a, 'tool', [0, 0.72, 0.06], [0.12, 0.02, 0.02], [0.4, 0, 0]));
+      }
+      break;
+    }
+    case 'exo_soldier': {
+      const white = 0xdfe4ea;
+      add(...humanBase({ torso: white, torsoMat: 'metal', sleeve: white, legs: 0x8a9098 }));
+      add(P('box', 'metal', white, 'body', [0, 0.2, 0.02], [0.4, 0.3, 0.3])); add(P('box', 'glow', 'team', 'body', [0, 0.22, 0.17], [0.16, 0.05, 0.02]));
+      add(P('sph', 'metal', white, 'body', [-0.21, 0.34, 0], [0.16, 0.12, 0.16])); add(P('sph', 'metal', white, 'body', [0.21, 0.34, 0], [0.16, 0.12, 0.16]));
+      add(P('sph', 'metal', white, 'head', [0, 0.11, 0], [0.27, 0.27, 0.27])); add(P('box', 'glow', 'team', 'head', [0, 0.12, 0.12], [0.2, 0.06, 0.04]));
+      add(P('box', 'metal', 0x6a7078, 'back', [0, 0.05, -0.17], [0.28, 0.32, 0.1])); add(P('cyl', 'glow', 'team', 'back', [-0.08, 0.05, -0.23], [0.04, 0.2, 0.04])); add(P('cyl', 'glow', 'team', 'back', [0.08, 0.05, -0.23], [0.04, 0.2, 0.04]));
+      add(P('box', 'metal', white, 'tool', [0, 0.32, 0], [0.07, 0.55, 0.09])); add(P('cyl', 'glow', 'team', 'tool', [0, 0.62, 0], [0.03, 0.12, 0.03]));
+      break;
+    }
+    case 'robot': {
+      const g = 0x7a828c, d = 0x3a4048;
+      for (const b of ['legL', 'legR']) { add(P('box', 'metal', g, b, [0, -0.18, 0.02], [0.17, 0.4, 0.2])); add(P('box', 'metal', d, b, [0, -0.43, 0.05], [0.2, 0.08, 0.32])); }
+      add(P('box', 'metal', g, 'body', [0, 0.2, 0], [0.5, 0.4, 0.36])); add(P('box', 'metal', d, 'body', [0, -0.02, 0], [0.36, 0.12, 0.28]));
+      add(P('box', 'cloth', 'team', 'body', [0, 0.24, 0.185], [0.3, 0.08, 0.02])); add(P('cyl', 'glow', 'team', 'body', [0, 0.12, 0.18], [0.1, 0.03, 0.1], [Math.PI / 2, 0, 0]));
+      add(P('box', 'metal', d, 'head', [0, 0.06, 0], [0.22, 0.14, 0.2])); add(P('box', 'glow', 'team', 'head', [0, 0.07, 0.1], [0.16, 0.04, 0.02]));
+      add(P('cyl', 'metal', d, 'head', [0.08, 0.2, -0.05], [0.015, 0.2, 0.015]));
+      for (const b of ['armL', 'armR']) { add(P('box', 'metal', g, b, [0, -0.15, 0], [0.13, 0.32, 0.13])); add(P('sph', 'metal', d, b, [0, 0, 0], [0.16, 0.16, 0.16])); }
+      add(P('box', 'metal', d, 'tool', [0, 0.18, 0], [0.1, 0.42, 0.12])); add(P('cyl', 'glow', 'team', 'tool', [0, 0.42, 0], [0.05, 0.08, 0.05]));
+      add(P('box', 'metal', d, 'shield', [0, 0.1, 0], [0.12, 0.3, 0.12])); add(P('box', 'metal', g, 'shield', [0, 0.28, 0.02], [0.16, 0.12, 0.16]));
+      break;
+    }
+    case 'trebuchet':
+      for (const x of [-0.32, 0.32]) {
+        add(P('box', 'wood', C.wood, 'root', [x, 0.1, 0], [0.08, 0.08, 1.6]));
+        add(P('box', 'wood', C.wood, 'root', [x, 0.62, -0.25], [0.07, 1.1, 0.07], [-0.45, 0, 0])); add(P('box', 'wood', C.wood, 'root', [x, 0.62, 0.25], [0.07, 1.1, 0.07], [0.45, 0, 0]));
+      }
+      add(P('box', 'wood', C.wood, 'root', [0, 0.1, 0.7], [0.72, 0.08, 0.08])); add(P('box', 'wood', C.wood, 'root', [0, 0.1, -0.7], [0.72, 0.08, 0.08]));
+      add(P('cyl', 'wood', 0x5a3d22, 'root', [0, 1.12, 0], [0.06, 0.8, 0.06], [0, 0, Math.PI / 2]));
+      for (const [x, z] of [[-0.36, -0.6], [0.36, -0.6], [-0.36, 0.6], [0.36, 0.6]]) add(P('disc', 'wood', 0x4a3220, 'root', [x, 0.12, z], [0.24, 0.05, 0.24], [0, 0, Math.PI / 2]));
+      add(P('box', 'wood', 0x6b4a2a, 'tool', [0, 0, 0.45], [0.08, 0.08, 1.9]));
+      add(P('box', 'wood', 0x4a3a2a, 'tool', [0, -0.12, -0.5], [0.34, 0.3, 0.3]));
+      add(P('cyl', 'cloth', C.rope, 'tool', [0, -0.25, 1.38], [0.012, 0.5, 0.012]));
+      add(P('box', 'cloth', 'team', 'root', [0, 0.3, -0.75], [0.3, 0.18, 0.02]));
+      break;
+    case 'cannon':
+    case 'field_gun': {
+      const steel = type === 'cannon' ? 0xa07838 : 0x5a5e62;
+      add(P('box', 'wood', type === 'cannon' ? C.wood : 0x4a4e40, 'root', [0, 0.18, -0.35], [0.16, 0.1, 0.8], [0.25, 0, 0]));
+      for (const x of [-0.27, 0.27]) {
+        add(P('wheel', 'wood', type === 'cannon' ? 0x5a3d22 : 0x2a2a2a, 'root', [x, 0.27, 0.05], [0.5, 0.5, 0.5], [0, Math.PI / 2, 0]));
+        add(P('cyl', 'wood', 0x5a3d22, 'root', [x, 0.27, 0.05], [0.03, 0.46, 0.03])); add(P('cyl', 'wood', 0x5a3d22, 'root', [x, 0.27, 0.05], [0.03, 0.46, 0.03], [Math.PI / 2, 0, 0]));
+      }
+      add(P('cyl', 'metal', 0x3a3a3a, 'root', [0, 0.27, 0.05], [0.04, 0.6, 0.04], [0, 0, Math.PI / 2]));
+      add(P('cyl', 'metal', steel, 'tool', [0, 0, 0.2], [0.15, 0.85, 0.15], [Math.PI / 2, 0, 0]));
+      add(P('cyl', 'metal', steel, 'tool', [0, 0, 0.62], [0.18, 0.06, 0.18], [Math.PI / 2, 0, 0]));
+      if (type === 'field_gun') add(P('box', 'metal', 0x4a4e40, 'root', [0, 0.45, 0.32], [0.6, 0.4, 0.03]));
+      add(P('box', 'cloth', 'team', 'root', [0, 0.3, -0.65], [0.2, 0.12, 0.02]));
+      break;
+    }
+    case 'tank': {
+      const hull = 0x55603a;
+      add(P('box', 'metal', hull, 'root', [0, 0.32, 0], [0.82, 0.24, 1.3]));
+      add(P('box', 'metal', hull, 'root', [0, 0.32, 0.72], [0.78, 0.16, 0.2], [0.6, 0, 0]));
+      for (const x of [-0.46, 0.46]) {
+        add(P('box', 'metal', 0x26282a, 'root', [x, 0.2, 0], [0.2, 0.3, 1.45]));
+        for (let i = 0; i < 5; i++) add(P('cyl', 'metal', 0x3a3c3e, 'root', [x * 1.04, 0.15, -0.56 + i * 0.28], [0.17, 0.08, 0.17], [0, 0, Math.PI / 2]));
+      }
+      add(P('box', 'cloth', 'team', 'root', [0, 0.45, -0.2], [0.84, 0.03, 0.12]));
+      add(P('cyl', 'metal', hull, 'tool', [0, 0.1, 0], [0.55, 0.22, 0.6])); add(P('box', 'metal', hull, 'tool', [0, 0.1, -0.18], [0.4, 0.2, 0.3]));
+      add(P('cyl', 'metal', 0x3a3e30, 'tool', [0, 0.12, 0.6], [0.07, 0.75, 0.07], [Math.PI / 2, 0, 0]));
+      add(P('cyl', 'metal', 0x3a3e30, 'tool', [0, 0.12, 0.98], [0.1, 0.1, 0.1], [Math.PI / 2, 0, 0]));
+      add(P('cyl', 'metal', hull, 'tool', [0.12, 0.24, -0.05], [0.12, 0.05, 0.12]));
+      add(P('cyl', 'metal', 0x202020, 'tool', [-0.18, 0.5, -0.2], [0.008, 0.6, 0.008]));
+      add(P('box', 'cloth', 'team', 'tool', [0, 0.22, -0.32], [0.3, 0.02, 0.02]));
+      break;
+    }
+    case 'bomber': {
+      const body = 0x6a7268;
+      add(P('cap', 'metal', body, 'root', [0, 0, 0], [0.3, 0.75, 0.3], [Math.PI / 2, 0, 0]));
+      add(P('sph', 'gold', 0x9ac8e8, 'root', [0, 0.12, 0.38], [0.18, 0.12, 0.3]));
+      add(P('box', 'metal', body, 'root', [0, -0.02, 0.05], [2.4, 0.05, 0.42]));
+      add(P('box', 'cloth', 'team', 'root', [-0.95, 0.005, 0.05], [0.3, 0.06, 0.43])); add(P('box', 'cloth', 'team', 'root', [0.95, 0.005, 0.05], [0.3, 0.06, 0.43]));
+      add(P('box', 'metal', body, 'root', [0, 0.02, -0.68], [0.9, 0.04, 0.22])); add(P('box', 'metal', body, 'root', [0, 0.18, -0.7], [0.04, 0.34, 0.24]));
+      add(P('box', 'cloth', 'team', 'root', [0, 0.2, -0.7], [0.05, 0.16, 0.16]));
+      for (const x of [-0.6, 0.6]) { add(P('cap', 'metal', 0x4a4e4a, 'root', [x, -0.07, 0.2], [0.14, 0.24, 0.14], [Math.PI / 2, 0, 0])); add(P('box', 'metal', 0x202020, 'root', [x, -0.07, 0.48], [0.6, 0.04, 0.02])); }
+      add(P('cap', 'metal', 0x303030, 'root', [0, -0.2, 0.05], [0.1, 0.25, 0.1], [Math.PI / 2, 0, 0]));
+      add(P('box', 'metal', 0x202020, 'tool', [0, 0, 0], [0.6, 0.05, 0.02])); add(P('box', 'metal', 0x202020, 'tool', [0, 0, 0], [0.05, 0.6, 0.02]));
+      break;
+    }
+    case 'drone': {
+      add(P('box', 'metal', 0x2a2e34, 'root', [0, 0, 0], [0.3, 0.1, 0.38])); add(P('sph', 'glow', 'team', 'root', [0, -0.02, 0.2], [0.08, 0.06, 0.06]));
+      for (const [x, z] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) {
+        add(P('box', 'metal', 0x3a3e44, 'root', [x * 0.2, 0.02, z * 0.2], [0.05, 0.03, 0.34], [0, Math.atan2(x, z), 0]));
+        add(P('disc', 'cloth', 'team', 'root', [x * 0.32, 0.06, z * 0.32], [0.3, 0.01, 0.3]));
+        add(P('cyl', 'metal', 0x202020, 'root', [x * 0.32, 0.03, z * 0.32], [0.04, 0.06, 0.04]));
+      }
+      add(P('box', 'metal', 0x202428, 'tool', [0, -0.06, 0.05], [0.06, 0.06, 0.3])); add(P('cyl', 'glow', 'team', 'tool', [0, -0.06, 0.22], [0.025, 0.04, 0.025], [Math.PI / 2, 0, 0]));
       break;
     }
     case 'ram':

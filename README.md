@@ -30,7 +30,7 @@ Ouvrez ensuite <http://localhost:3000> dans votre navigateur. Pour changer de po
   cheminées, forge, incendies des bâtiments endommagés, poussière, explosions.
 - **Modèles 3D procéduraux** texturés (pierre, colombages, tuiles, ardoise, chaume, planches)
   avec bandes et bannières aux couleurs du joueur. Unités animées (marche, attaque,
-  récolte) : fantassins, archers, cavaliers, engins de siège. Portraits 3D dans l'interface.
+  récolte) : fantassins, archers, cavaliers, engins de siège, chars, robots, avions et drones. Portraits 3D dans l'interface.
 - **4 qualités graphiques** : Ultra, Équilibrée, Performance (3D) et Classique (2D, utilisée
   automatiquement si WebGL 2 n'est pas disponible).
 - **6 civilisations** jouables, chacune avec son architecture, l'apparence de ses unités,
@@ -46,9 +46,29 @@ Ouvrez ensuite <http://localhost:3000> dans votre navigateur. Pour changer de po
   | Vikings | rondins, grande halle, proues de dragon | infanterie +15 % vitesse, villageois +10 PV | Berserker |
 
 - **Carte procédurale** : lacs, plages, forêts, filons d'or et de pierre, baies, moutons.
-- **4 ressources**, **4 âges**, **16 bâtiments** (dont palissade et muraille de pierre à
-  tracer en cliquant-glissant, avec tours automatiques aux angles), **15 unités**,
-  **18 technologies**, marché à cours variables.
+- **4 ressources**, **8 âges**, **24 bâtiments** (dont palissade et muraille de pierre à
+  tracer en cliquant-glissant, avec tours automatiques aux angles), **34 unités**
+  (dont 3 volantes), **44 technologies**, marché à cours variables.
+- **8 âges, du Moyen Âge au futur** :
+
+  | Âge | Coût | Nouveautés |
+  |---|---|---|
+  | Tribal | — | villageois, milicien, éclaireur, maisons, camps, caserne, écurie |
+  | Féodal | 500 nourriture | piquier, archer, tirailleur, forge, marché, tour, muraille |
+  | Châteaux | 800 nourriture, 200 or | épéiste, arbalétrier, chevalier, siège, forteresse, unités uniques |
+  | Impérial | 1000 nourriture, 800 or | champion, paladin, bombarde, **trébuchet**, **université**, **merveille**, 11 technologies impériales |
+  | Renaissance | 1600 nourriture, 1200 or | mousquetaire, cuirassier, canon, **banque** (revenu d'or) |
+  | Industriel | 2000 nourriture, 1500 or, 500 pierre | fusilier, dragon, artillerie de campagne, **usine** (produit la ressource choisie et des chars), bunker |
+  | Moderne | 2500 nourriture, 2000 or, 1000 bois | soldat, mitrailleur, char d'assaut, **bombardier**, aérodrome |
+  | Futur | 3000 nourriture, 2500 or, 1500 pierre | exo-soldat, robot de combat, **drone**, tourelle à plasma, **programme spatial** |
+
+- **Merveilles** propres à chaque civilisation (cathédrale, Colisée, pyramide et sphinx,
+  temple du Soleil, pagode et torii, église en bois debout) : si elle tient **8 minutes**,
+  c'est la victoire. **Programme spatial** : si la fusée décolle au bout de **4 minutes**,
+  c'est la victoire scientifique. Un compte à rebours s'affiche pour tous les joueurs.
+- **Armes à feu et unités volantes** : balles traçantes, obus explosifs, rayons laser, bombes ;
+  les bombardiers et drones survolent le terrain et seules les unités à distance et les
+  bâtiments défensifs peuvent les toucher.
 - **Combat** : armures de mêlée et de perçage, bonus d'unités, projectiles, tours qui tirent.
 - **Musique rock / électro générée en temps réel** : batterie, guitares saturées doublées,
   basse, nappes et arpèges de synthés, montées et impacts. Le style suit la partie
@@ -69,8 +89,10 @@ Ouvrez ensuite <http://localhost:3000> dans votre navigateur. Pour changer de po
 | Groupes | Ctrl + 1-9 pour créer, 1-9 pour rappeler (deux fois pour centrer la vue) |
 | Raccourcis | H : hôtel de ville, `.` : villageois inactif, Suppr : détruire, Échap : annuler / pause |
 | Production | Maj + clic sur une unité : en former 5 |
+| Construction | V : changer de page (Économie / Armée et défense) |
 
-**Victoire** : détruire toutes les unités et tous les bâtiments principaux de l'adversaire.
+**Victoire** : détruire toutes les unités et tous les bâtiments principaux de l'adversaire,
+ou garder une merveille debout 8 minutes, ou faire décoller une fusée depuis le programme spatial.
 
 ## Architecture
 
@@ -107,7 +129,8 @@ npm test
 ```
 
 Les tests génèrent des cartes, vérifient la récolte et font jouer l'IA contre elle-même
-pendant 16 minutes de jeu simulé.
+pendant 16 minutes de jeu simulé, et vérifient la progression jusqu'à l'âge du Futur,
+les unités volantes, les revenus de la banque et les victoires par merveille et par fusée.
 
 ## Performances
 
@@ -122,7 +145,6 @@ ou une carte graphique intégrée, choisissez **Équilibrée** ou **Performance*
 
 ## Pistes d'évolution
 
-- Plusieurs civilisations avec des bonus et des unités uniques
 - Mode multijoueur en réseau (WebSocket via le serveur Node)
 - Sauvegarde et chargement des parties
-- Unités navales, moines et conversion, merveilles
+- Unités navales, moines et conversion

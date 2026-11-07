@@ -73,3 +73,42 @@ for (const seed of [1, 2, 3]) {
     assert.ok(g.players.some((p) => p.stats.kills > 0), 'des combats ont eu lieu');
   });
 }
+
+test('les âges avancés : passage jusqu’au Futur et victoire spatiale', () => {
+  const R = 300000;
+  const g = new Game({ seed: 9, size: 96, players: 2, humanPlayer: -1, civs: ['romains', 'japonais'], startRes: { food: R, wood: R, gold: R, stone: R } });
+  const ai = new AI(g, 0, 'normal');
+  for (let i = 0; i < 40 * 60 / TICK && g.winner === null; i++) { ai.attacking = false; ai.nextAttack = 1e9; ai.update(TICK); g.update(TICK); }
+  assert.equal(g.players[0].age, 7, 'âge du Futur atteint');
+  assert.equal(g.winner, 0);
+  assert.equal(g.victoryReason, 'space');
+});
+
+test('unités aériennes, revenus et merveille', async () => {
+  const { BUILDINGS, WONDER_TIME } = await import('../public/js/config.js');
+  const g = new Game({ seed: 4, size: 72, players: 2, humanPlayer: -1 });
+  const [p0, p1] = g.players;
+  p0.age = 7; p1.age = 7;
+  // un avion ne peut pas être attaqué au corps à corps, mais par une unité à distance
+  const plane = g.createUnit('bomber', 1, 30, 30);
+  const sword = g.createUnit('champion', 0, 31, 30);
+  const gun = g.createUnit('soldier', 0, 29, 31);
+  assert.equal(g.issue(0, { type: 'attack', ids: [sword.id], target: plane.id }), true);
+  assert.equal(sword.order, null, 'la mêlée ignore les avions');
+  g.issue(0, { type: 'attack', ids: [gun.id], target: plane.id });
+  assert.equal(gun.order.kind, 'attack');
+  // la banque produit de l'or en continu
+  const bank = g.createBuilding('bank', 0, 5, 5, true);
+  const gold = p0.res.gold;
+  for (let i = 0; i < 10 / TICK; i++) g.update(TICK);
+  assert.ok(p0.res.gold > gold + 8, 'or produit par la banque');
+  void bank;
+  // une seule merveille, et victoire après le compte à rebours
+  const w = g.createBuilding('wonder', 0, 10, 40, true);
+  assert.equal(g.canPlace(0, 'wonder', 20, 50), false);
+  assert.ok(Math.abs(w.countdown - WONDER_TIME) < 1);
+  for (let i = 0; i < (WONDER_TIME + 5) / TICK && g.winner === null; i++) g.update(TICK);
+  assert.equal(g.winner, 0);
+  assert.equal(g.victoryReason, 'wonder');
+  void BUILDINGS;
+});
