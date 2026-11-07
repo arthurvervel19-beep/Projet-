@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Aube des Royaumes</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <canvas id="game"></canvas>
+
+  <!-- Barre du haut : ressources -->
+  <div id="topbar" class="hidden">
+    <div class="res" data-tip="Nourriture"><span>🍖</span><b id="r-food">0</b><i id="v-food"></i></div>
+    <div class="res" data-tip="Bois"><span>🪵</span><b id="r-wood">0</b><i id="v-wood"></i></div>
+    <div class="res" data-tip="Or"><span>🪙</span><b id="r-gold">0</b><i id="v-gold"></i></div>
+    <div class="res" data-tip="Pierre"><span>🪨</span><b id="r-stone">0</b><i id="v-stone"></i></div>
+    <div class="res" data-tip="Population"><span>👥</span><b id="r-pop">0/0</b></div>
+    <div id="age-label">Âge Tribal</div>
+    <div class="spacer"></div>
+    <button id="idle-btn" class="small" title="Villageois inactif (touche .)">💤 <span id="idle-count">0</span></button>
+    <div id="clock">00:00</div>
+    <select id="speed" title="Vitesse du jeu">
+      <option value="0.75">×0,75</option>
+      <option value="1" selected>×1</option>
+      <option value="1.5">×1,5</option>
+      <option value="2">×2</option>
+    </select>
+    <button id="pause-btn" class="small" title="Pause (Échap)">⏸</button>
+  </div>
+
+  <div id="messages"></div>
+
+  <!-- Panneau du bas -->
+  <div id="bottom" class="hidden">
+    <div id="minimap-wrap"><canvas id="minimap"></canvas></div>
+    <div id="info"></div>
+    <div id="commands"></div>
+  </div>
+  <div id="tooltip" class="hidden"></div>
+
+  <!-- Menu principal -->
+  <div id="menu" class="overlay">
+    <div class="panel">
+      <h1>Aube des Royaumes</h1>
+      <p class="sub">Stratégie en temps réel — bâtissez, récoltez, conquérez.</p>
+      <div class="form">
+        <label>Difficulté de l'adversaire
+          <select id="opt-diff">
+            <option value="facile">Facile</option>
+            <option value="normal" selected>Normal</option>
+            <option value="difficile">Difficile</option>
+          </select>
+        </label>
+        <label>Taille de la carte
+          <select id="opt-size">
+            <option value="72">Petite (72×72)</option>
+            <option value="96" selected>Moyenne (96×96)</option>
+            <option value="128">Grande (128×128)</option>
+          </select>
+        </label>
+        <label>Ressources de départ
+          <select id="opt-res">
+            <option value="standard" selected>Standard</option>
+            <option value="riche">Riches</option>
+          </select>
+        </label>
+        <label>Graine de la carte
+          <input id="opt-seed" type="number" placeholder="aléatoire">
+        </label>
+      </div>
+      <button id="start-btn" class="big">Lancer la partie</button>
+      <details>
+        <summary>Commandes</summary>
+        <ul class="help">
+          <li><b>Clic gauche</b> : sélectionner (glisser pour une sélection multiple, double-clic : toutes les unités du même type)</li>
+          <li><b>Clic droit</b> : déplacer, récolter, attaquer, construire, réparer, définir le point de ralliement</li>
+          <li><b>Flèches / bords de l'écran / clic molette</b> : déplacer la caméra — <b>molette</b> : zoom</li>
+          <li><b>Ctrl + 1-9</b> : créer un groupe — <b>1-9</b> : rappeler le groupe</li>
+          <li><b>H</b> : hôtel de ville — <b>.</b> : villageois inactif — <b>Suppr</b> : détruire — <b>Échap</b> : annuler / pause</li>
+          <li>Les raccourcis des boutons sont affichés dans leur coin.</li>
+          <li><b>But</b> : détruire toutes les unités et bâtiments principaux de l'adversaire.</li>
+        </ul>
+      </details>
+    </div>
+  </div>
+
+  <div id="pause" class="overlay hidden">
+    <div class="panel">
+      <h2>Pause</h2>
+      <button id="resume-btn" class="big">Reprendre</button>
+      <button id="quit-btn">Abandonner la partie</button>
+    </div>
+  </div>
+
+  <div id="end" class="overlay hidden">
+    <div class="panel">
+      <h2 id="end-title">Victoire !</h2>
+      <div id="end-stats"></div>
+      <button id="again-btn" class="big">Nouvelle partie</button>
+    </div>
+  </div>
+
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>
