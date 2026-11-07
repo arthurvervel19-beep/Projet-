@@ -22,6 +22,7 @@ export class Game {
     this.effects = [];
     this.events = [];
     this.humanPlayer = humanPlayer;
+    this.sound = false; // activé dans le navigateur pour émettre des événements sonores
     this.winner = null;
     this.marketPrices = { food: 100, wood: 100, stone: 130 };
     const n = size * size;
@@ -226,6 +227,8 @@ export class Game {
   pay(p, cost) { for (const [k, v] of Object.entries(cost || {})) p.res[k] -= v; }
 
   refund(p, cost) { for (const [k, v] of Object.entries(cost || {})) p.res[k] += v; }
+
+  sfx(kind, x, y) { if (this.sound) this.events.push({ type: 'sfx', kind, x, y }); }
 
   msg(player, text, kind = 'info') { this.events.push({ type: 'msg', player, text, kind }); }
 
@@ -711,7 +714,7 @@ export class Game {
       u.cooldown = st.rof;
       u.atkAnim = 0.35;
       if (st.range > 0) this.fire(u.owner, u.x, u.y, t, st, st.projectile || 'arrow');
-      else this.damage(t, this.calcDamage(st, t), u.owner, u);
+      else { this.damage(t, this.calcDamage(st, t), u.owner, u); this.sfx(u.type === 'villager' ? 'chop' : UNITS[u.type].cls === 'siege' ? 'boom' : 'hit', u.x, u.y); }
     }
   }
 
@@ -727,6 +730,7 @@ export class Game {
     const speed = kind === 'arrow' ? 9 : kind === 'javelin' ? 8 : 5;
     const tx = target.x, ty = target.y;
     const d = Math.hypot(tx - x, ty - y);
+    this.sfx(kind === 'arrow' || kind === 'javelin' ? 'arrow' : 'launch', x, y);
     this.projectiles.push({
       owner, x0: x, y0: y, x: x, y: y, tx, ty, target: target.id, t: 0, dur: Math.max(0.15, d / speed),
       st, kind, arc: kind === 'arrow' || kind === 'javelin' ? 0.5 + d * 0.08 : 0.8 + d * 0.15,
@@ -745,6 +749,7 @@ export class Game {
         p.done = true;
         if (p.st.splash) {
           this.effects.push({ kind: 'blast', x: p.tx, y: p.ty, t: 0, dur: 0.5 });
+          this.sfx('boom', p.tx, p.ty);
           const targets = [...this.units, ...this.buildings].filter((e) => !e.dead && this.isEnemy(p.owner, e.owner));
           for (const e of targets) {
             const d = e.kind === 'unit' ? Math.hypot(e.x - p.tx, e.y - p.ty) : distToRect(p.tx, p.ty, this.rectOf(e));
@@ -780,10 +785,12 @@ export class Game {
     e.hp = 0;
     if (e.kind === 'unit') {
       this.effects.push({ kind: 'corpse', x: e.x, y: e.y, type: e.type, owner: e.owner, dir: e.dir, t: 0, dur: 10 });
+      this.sfx('death', e.x, e.y);
       if (e.owner >= 0) this.players[e.owner].stats.losses++;
       if (killerOwner >= 0) this.players[killerOwner].stats.kills++;
     } else if (e.kind === 'building') {
       this.effects.push({ kind: 'rubble', x: e.x, y: e.y, size: e.size, t: 0, dur: 20 });
+      if (!BUILDINGS[e.type].farm) this.sfx('collapse', e.x, e.y);
       if (killerOwner >= 0) this.players[killerOwner].stats.razed++;
       if (BUILDINGS[e.type].farm) {
         const f = this.get(e.farmer);
@@ -870,6 +877,8 @@ export class Game {
       }
       u.carry.type = o.resType;
       u.carry.amount += 1;
+      if (o.gk === 'tree') this.sfx('chop', u.x, u.y);
+      else if (o.gk === 'gold' || o.gk === 'stone') this.sfx('mine', u.x, u.y);
       if (u.carry.amount >= cap || t.dead) break;
     }
   }
@@ -915,6 +924,7 @@ export class Game {
     if (!r) return;
     u.working = true;
     u.dir = (b.x - u.x) - (b.y - u.y) >= 0 ? 1 : -1;
+    if (this.sound && this.rand() < dt * 1.3) this.sfx('hammer', u.x, u.y);
     if (!b.built) {
       const inc = dt / def.time;
       b.progress = Math.min(1, b.progress + inc);
@@ -961,6 +971,7 @@ export class Game {
     const p = this.players[b.owner];
     this.recomputePopCap(p);
     p.stats.built++;
+    if (this.time > 1 && !BUILDINGS[b.type].wall) this.events.push({ type: 'sfx', kind: 'built', x: b.x, y: b.y, player: b.owner, ui: true });
     if (b.owner === this.humanPlayer && this.time > 1 && !BUILDINGS[b.type].farm && !BUILDINGS[b.type].wall) this.msg(b.owner, `${BUILDINGS[b.type].name} terminé(e).`);
   }
 

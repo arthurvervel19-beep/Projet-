@@ -36,6 +36,17 @@ Ouvrez ensuite <http://localhost:3000> dans votre navigateur. Pour changer de po
 - **Marché** avec des cours qui évoluent selon les achats et les ventes.
 - **Brouillard de guerre**, minicarte, alertes d'attaque, groupes de contrôle,
   attaque-mouvement, points de ralliement et file de production.
+- **Rendu soigné** : terrain peint pixel par pixel (transitions douces, relief, eau
+  profonde, écume, sous-bois, herbes et fleurs). Bâtiments texturés (pierre de taille,
+  colombages, planches, tuiles, ardoise, chaume) avec ombres portées, bannières animées,
+  fumée, ailes de moulin et incendies quand ils sont endommagés. Arbres et rochers
+  détaillés, vignettage chaud, interface médiévale et portraits générés par le moteur.
+- **Musique originale générée en temps réel** : luth, flûte à bec, chalémie, vielle à
+  roue (bourdon), tambour et tambourin, sur des gammes modales médiévales. Trois
+  ambiances (village, danse, bataille) qui suivent l'intensité des combats.
+- **Bruitages synthétisés** et spatialisés : haches, pioches, marteaux, épées, flèches,
+  catapultes, effondrements, cor d'alerte et fanfares. Réglages du volume dans le menu
+  pause (Échap), bouton ♫ pour couper le son.
 - **IA adverse** en 3 niveaux (facile, normal, difficile). Elle gère son économie, change
   d'âge, recherche des technologies, adapte la composition de son armée, se défend et
   lance des vagues d'attaque.
@@ -65,6 +76,9 @@ public/js/pathfinding.js  A* 8 directions avec lissage des trajets
 public/js/game.js    moteur de simulation (sans DOM, testable dans Node)
 public/js/ai.js      intelligence artificielle
 public/js/render.js  rendu isométrique sur canvas
+public/js/terrain.js terrain peint (blocs de 16×16 tuiles mis en cache)
+public/js/sprites.js textures procédurales, arbres, rochers, bâtiments en cache
+public/js/audio.js   musique procédurale et bruitages (Web Audio API)
 public/js/ui.js      souris, clavier, interface
 public/js/main.js    menu et boucle de jeu
 test/                tests (node --test)
@@ -88,5 +102,4 @@ pendant 16 minutes de jeu simulé.
 - Plusieurs civilisations avec des bonus et des unités uniques
 - Mode multijoueur en réseau (WebSocket via le serveur Node)
 - Sauvegarde et chargement des parties
-- Sons et musique
 - Unités navales, moines et conversion, merveilles

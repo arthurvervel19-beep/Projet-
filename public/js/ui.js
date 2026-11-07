@@ -4,7 +4,8 @@ import { UNITS, BUILDINGS, TECHS, AGES, BUILD_MENU, RES_ICON, RES_NAME, costText
 const HOTKEYS = 'QWERTYASDFGHZXCVBN';
 
 export class UI {
-  constructor(game, renderer, me) {
+  constructor(game, renderer, me, audio = null) {
+    this.audio = audio;
     this.g = game;
     this.r = renderer;
     this.me = me;
@@ -28,6 +29,7 @@ export class UI {
     this.mctx = this.minimap.getContext('2d');
     this.setupMinimap();
     this.bind();
+    document.querySelectorAll('img.ri').forEach((im) => { im.src = this.r.resIcon(im.dataset.res); });
   }
 
   setupMinimap() {
@@ -77,7 +79,7 @@ export class UI {
       if (!b) return;
       e.preventDefault();
       const btn = this.buttons[+b.dataset.btn];
-      if (btn) btn.action(e);
+      if (btn) { this.sound('click'); btn.action(e); }
     });
     const info = this.el('info');
     info.addEventListener('mousedown', (e) => {
@@ -219,6 +221,7 @@ export class UI {
         for (const id of [...this.selected]) { const x = this.g.get(id); if (!x || x.kind !== 'unit') this.selected.delete(id); }
       } else {
         this.selected = new Set([t.id]);
+        if (t.owner === this.me) this.sound('select');
       }
       this.lastClick = { t: now, id: t.id };
     } else if (!ds.shift) this.selected.clear();
@@ -265,6 +268,7 @@ export class UI {
     if (k.startsWith('Arrow')) { e.preventDefault(); return; }
     if (e.ctrlKey || e.metaKey || e.altKey) return;
     const up = k.toUpperCase();
+    this.buttons = this.computeButtons();
     const btn = this.buttons.find((b) => b.key === up);
     if (btn) { btn.action(e); return; }
     if (up === 'H') {
@@ -327,6 +331,7 @@ export class UI {
     const t = performance.now() / 1000;
     if (units.length) {
       const kind = this.g.smartCommand(this.me, units.map((u) => u.id), x, y, target);
+      this.sound('order');
       this.marker = { x: target ? target.x : x, y: target ? target.y : y, t, color: kind === 'attack' ? '#ff6b5e' : kind === 'move' ? '#7dff7a' : '#ffe066' };
       void shift;
       return;
@@ -415,13 +420,16 @@ export class UI {
     // événements du jeu
     for (const ev of this.g.events) {
       if (ev.type === 'msg' && (ev.player === this.me || ev.player === -1)) this.msg(ev.text, ev.kind);
+      if (ev.type === 'sfx') this.positional(ev);
       if (ev.type === 'attacked' && ev.player === this.me) {
         this.msg('Vous êtes attaqué !', 'alert');
+        this.sound('alert');
+        if (this.audio) this.audio.combat(4);
         this.pings.push({ x: ev.x, y: ev.y, t: performance.now() / 1000 });
         this.lastAlert = { x: ev.x, y: ev.y };
       }
-      if (ev.type === 'age' && ev.player === this.me) this.hudTimer = 0;
-      if (ev.type === 'trained' && ev.player === this.me) this.hudTimer = 0;
+      if (ev.type === 'age' && ev.player === this.me) { this.hudTimer = 0; this.sound('age'); }
+      if (ev.type === 'trained' && ev.player === this.me) { this.hudTimer = 0; this.sound('trained', 0.6); }
     }
     this.g.events.length = 0;
     this.pings = this.pings.filter((p) => performance.now() / 1000 - p.t < 3);
@@ -456,10 +464,37 @@ export class UI {
 
   sel() { return [...this.selected].map((id) => this.g.get(id)).filter(Boolean); }
 
+  sound(kind, vol = 1) { if (this.audio) this.audio.sfxPlay(kind, vol); }
+
+  // son spatialisé selon la position à l'écran
+  positional(ev) {
+    if (!this.audio) return;
+    if (ev.ui) { if (ev.player === this.me) this.sound(ev.kind, 0.8); return; }
+    const p = this.r.toScreen(ev.x, ev.y);
+    const dx = (p.x - this.r.w / 2) / (this.r.w / 2), dy = (p.y - this.r.h / 2) / (this.r.h / 2);
+    const d = Math.hypot(dx, dy);
+    if (d > 1.5) return;
+    if (!this.g.players[this.me].visible[Math.floor(ev.y) * this.g.map.w + Math.floor(ev.x)]) return;
+    const vol = Math.max(0, 1 - d / 1.5) * (0.6 + 0.4 * Math.min(1, this.r.cam.zoom));
+    if (ev.kind === 'hit' || ev.kind === 'arrow' || ev.kind === 'boom') this.audio.combat(0.12);
+    this.audio.sfxPlay(ev.kind, vol, dx * 0.7);
+  }
+
+  img(kind, type, owner = this.me) {
+    const color = owner >= 0 ? this.g.players[owner].color : '#888888';
+    return `<img src="${this.r.icon(kind, type, color)}" alt="">`;
+  }
+
   iconOf(e) {
-    if (e.kind === 'unit') return UNITS[e.type].icon;
-    if (e.kind === 'building') return BUILDINGS[e.type].icon;
+    if (e.kind === 'unit') return this.img('unit', e.type, e.owner);
+    if (e.kind === 'building') return this.img('building', e.type, e.owner);
     return { tree: '🌳', gold: '🪙', stone: '🪨', berries: '🫐', sheep: '🐑' }[e.type];
+  }
+
+  portrait(e) {
+    if (e.kind === 'resource') return '';
+    const color = e.owner >= 0 ? this.g.players[e.owner].color : '#888888';
+    return `<img class="portrait" src="${this.r.icon(e.kind, e.type, color)}" alt="">`;
   }
 
   renderInfo() {
@@ -491,8 +526,8 @@ export class UI {
       html = `<h3>${this.iconOf(e)} ${n}</h3><div class="row">${ownerTxt}</div><div class="row">${RES_ICON[rt]} Restant : <b>${Math.ceil(e.amount)}</b> / ${e.maxAmount}</div>`;
     } else if (e.kind === 'unit') {
       const st = g.unitStats(e.owner, e.type);
-      html = `<h3>${st.icon} ${st.name}</h3><div class="row">${ownerTxt}</div>
-        <div class="hpbar"><div style="width:${100 * e.hp / e.maxHp}%"></div></div>
+      html = `<div class="head">${this.portrait(e)}<div><h3>${st.name}</h3><div class="row owner">${ownerTxt}</div>
+        <div class="hpbar"><div style="width:${100 * e.hp / e.maxHp}%"></div></div></div></div>
         <div class="row">❤️ <b>${Math.ceil(e.hp)}/${e.maxHp}</b> ⚔️ <b>${st.atk}</b>${st.range ? ` 🎯 <b>${st.range}</b>` : ''} 🛡️ <b>${st.armor[0]}/${st.armor[1]}</b> 👁️ <b>${st.los}</b></div>`;
       if (Object.keys(st.bonus || {}).length) html += `<div class="row">Bonus : ${Object.entries(st.bonus).map(([k, v]) => `+${v} contre ${{ cavalry: 'cavalerie', archer: 'archers', infantry: 'infanterie', building: 'bâtiments' }[k] || k}`).join(', ')}</div>`;
       if (e.type === 'villager') {
@@ -503,8 +538,8 @@ export class UI {
       html += `<div class="row" style="font-size:12px">${st.desc}</div>`;
     } else {
       const def = BUILDINGS[e.type];
-      html = `<h3>${def.icon} ${def.name}</h3><div class="row">${ownerTxt}</div>
-        <div class="hpbar"><div style="width:${100 * e.hp / e.maxHp}%"></div></div>
+      html = `<div class="head">${this.portrait(e)}<div><h3>${def.name}</h3><div class="row owner">${ownerTxt}</div>
+        <div class="hpbar"><div style="width:${100 * e.hp / e.maxHp}%"></div></div></div></div>
         <div class="row">❤️ <b>${Math.ceil(e.hp)}/${e.maxHp}</b> 🛡️ <b>${g.armorOf(e).join('/')}</b>${def.attack ? ` ⚔️ <b>${g.buildingAttack(e).atk}</b> 🎯 <b>${g.buildingAttack(e).range}</b>` : ''}</div>`;
       if (!e.built) html += `<div class="row">En construction : <b>${Math.floor(e.progress * 100)}%</b></div>`;
       if (def.farm && e.built) html += `<div class="row">🍖 Nourriture restante : <b>${Math.ceil(e.food)}</b></div>`;
@@ -514,7 +549,7 @@ export class UI {
       }
       if (e.queue.length && e.owner === this.me) {
         html += '<div class="queue">' + e.queue.map((q, i) => {
-          const icon = q.kind === 'unit' ? UNITS[q.id].icon : q.kind === 'tech' ? TECHS[q.id].icon : '⬆️';
+          const icon = q.kind === 'unit' ? this.img('unit', q.id) : q.kind === 'tech' ? TECHS[q.id].icon : '⚜';
           const name = q.kind === 'unit' ? UNITS[q.id].name : q.kind === 'tech' ? TECHS[q.id].name : AGES[q.id].name;
           return `<div class="q ${q.housed ? 'housed' : ''}" data-cancel="${i}" data-b="${e.id}" data-tip="${name} — clic pour annuler">${icon}${i === 0 ? `<div class="bar" style="width:${100 * q.t / q.time}%"></div>` : ''}</div>`;
         }).join('') + '</div>';
@@ -539,16 +574,16 @@ export class UI {
           const def = BUILDINGS[type];
           const okAge = p.age >= def.age;
           btns.push({
-            icon: def.icon, key: def.hotkey, disabled: !okAge || !g.canAfford(p, def.cost),
+            icon: this.img('building', type), key: def.hotkey, disabled: !okAge || !g.canAfford(p, def.cost),
             tip: `<b>${def.name}</b> (${def.hotkey})<div>${def.desc}</div>${costHtml(def.cost)}${okAge ? '' : reqTxt(def.age)}`,
             action: () => this.startPlacing(type),
           });
         }
       } else {
-        btns.push({ icon: '⚔️', key: 'Q', tip: '<b>Attaque-mouvement</b> (Q)<div>Se déplace en attaquant les ennemis rencontrés.</div>', action: () => { this.mode = 'attackMove'; } });
+        btns.push({ icon: '<span class="emo">⚔️</span>', key: 'Q', tip: '<b>Attaque-mouvement</b> (Q)<div>Se déplace en attaquant les ennemis rencontrés.</div>', action: () => { this.mode = 'attackMove'; } });
       }
-      btns.push({ icon: '✋', key: 'X', tip: '<b>Stop</b> (X)', action: () => this.g.issue(this.me, { type: 'stop', ids: units.map((u) => u.id) }) });
-      btns.push({ icon: '💀', key: null, tip: '<b>Supprimer</b> (Suppr)', action: () => { this.g.issue(this.me, { type: 'delete', ids: units.map((u) => u.id) }); this.selected.clear(); } });
+      btns.push({ icon: '<span class="emo">✋</span>', key: 'X', tip: '<b>Stop</b> (X)', action: () => this.g.issue(this.me, { type: 'stop', ids: units.map((u) => u.id) }) });
+      btns.push({ icon: '<span class="emo">💀</span>', key: null, tip: '<b>Supprimer</b> (Suppr)', action: () => { this.g.issue(this.me, { type: 'delete', ids: units.map((u) => u.id) }); this.selected.clear(); } });
       return btns;
     }
     const b = list[0];
@@ -564,7 +599,7 @@ export class UI {
         const key = nextKey();
         const st = g.unitStats(this.me, type);
         btns.push({
-          icon: u.icon, key, disabled: !okAge || !g.canAfford(p, u.cost),
+          icon: this.img('unit', type), key, disabled: !okAge || !g.canAfford(p, u.cost),
           tip: `<b>${u.name}</b> (${key}) — Maj+clic : ×5<div>${u.desc}</div><div>❤️ ${st.hp} ⚔️ ${st.atk}${st.range ? ` 🎯 ${st.range}` : ''} 🛡️ ${st.armor.join('/')} ⏱️ ${u.time}s</div>${costHtml(u.cost)}${okAge ? '' : reqTxt(u.age)}`,
           action: (e) => this.g.issue(this.me, { type: 'train', building: b.id, unit: type, count: e && e.shiftKey ? 5 : 1 }) && (this.hudTimer = 0),
         });
@@ -576,7 +611,7 @@ export class UI {
         const okAge = p.age >= t.age;
         const key = nextKey();
         btns.push({
-          icon: t.icon, key, disabled: !okAge || !g.canAfford(p, t.cost),
+          icon: `<span class="emo">${t.icon}</span>`, key, disabled: !okAge || !g.canAfford(p, t.cost),
           tip: `<b>${t.name}</b> (${key})<div>${t.desc}</div><div>⏱️ ${t.time}s</div>${costHtml(t.cost)}${okAge ? '' : reqTxt(t.age)}`,
           action: () => this.g.issue(this.me, { type: 'research', building: b.id, tech }) && (this.hudTimer = 0),
         });
@@ -585,21 +620,21 @@ export class UI {
         const next = AGES[p.age + 1];
         const reqOk = g.ageRequirementMet(p);
         btns.push({
-          icon: '⬆️', key: 'Z', disabled: !reqOk || !g.canAfford(p, next.cost),
+          icon: '<span class="emo">⬆️</span>', key: 'Z', disabled: !reqOk || !g.canAfford(p, next.cost),
           tip: `<b>Passer à l'${next.name.slice(2)}</b> (Z)<div>Débloque de nouveaux bâtiments, unités et technologies.</div><div>⏱️ ${next.time}s</div>${costHtml(next.cost)}${reqOk ? '' : `<div class="no">${g.ageRequirementText(p)}</div>`}`,
           action: () => this.g.issue(this.me, { type: 'ageUp', building: b.id }) && (this.hudTimer = 0),
         });
       }
       if (def.market) {
         for (const r of ['food', 'wood', 'stone']) {
-          btns.push({ icon: RES_ICON[r], badge: 'achat', key: nextKey(), tip: `<b>Acheter 100 ${RES_NAME[r]}</b><div>Coût : ${g.marketPrices[r]} 🪙</div>`, action: () => this.g.issue(this.me, { type: 'market', action: 'buy', res: r }) });
+          btns.push({ icon: `<img src="${this.r.resIcon(r)}" style="width:70%;height:70%">`, badge: 'achat', key: nextKey(), tip: `<b>Acheter 100 ${RES_NAME[r]}</b><div>Coût : ${g.marketPrices[r]} 🪙</div>`, action: () => this.g.issue(this.me, { type: 'market', action: 'buy', res: r }) });
         }
         for (const r of ['food', 'wood', 'stone']) {
-          btns.push({ icon: RES_ICON[r], badge: 'vente', key: nextKey(), tip: `<b>Vendre 100 ${RES_NAME[r]}</b><div>Gain : ${Math.round(g.marketPrices[r] * 0.7)} 🪙</div>`, action: () => this.g.issue(this.me, { type: 'market', action: 'sell', res: r }) });
+          btns.push({ icon: `<img src="${this.r.resIcon(r)}" style="width:70%;height:70%">`, badge: 'vente', key: nextKey(), tip: `<b>Vendre 100 ${RES_NAME[r]}</b><div>Gain : ${Math.round(g.marketPrices[r] * 0.7)} 🪙</div>`, action: () => this.g.issue(this.me, { type: 'market', action: 'sell', res: r }) });
         }
       }
     }
-    btns.push({ icon: '💀', key: null, tip: '<b>Détruire le bâtiment</b> (Suppr)', action: () => { this.g.issue(this.me, { type: 'delete', ids: [b.id] }); this.selected.clear(); } });
+    btns.push({ icon: '<span class="emo">💀</span>', key: null, tip: '<b>Détruire le bâtiment</b> (Suppr)', action: () => { this.g.issue(this.me, { type: 'delete', ids: [b.id] }); this.selected.clear(); } });
     return btns;
   }
 

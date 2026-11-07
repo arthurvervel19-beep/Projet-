@@ -4,6 +4,9 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Aube des Royaumes</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700;900&family=EB+Garamond:ital,wght@0,400;0,600;1,400&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -11,11 +14,11 @@
 
   <!-- Barre du haut : ressources -->
   <div id="topbar" class="hidden">
-    <div class="res" data-tip="Nourriture"><span>🍖</span><b id="r-food">0</b><i id="v-food"></i></div>
-    <div class="res" data-tip="Bois"><span>🪵</span><b id="r-wood">0</b><i id="v-wood"></i></div>
-    <div class="res" data-tip="Or"><span>🪙</span><b id="r-gold">0</b><i id="v-gold"></i></div>
-    <div class="res" data-tip="Pierre"><span>🪨</span><b id="r-stone">0</b><i id="v-stone"></i></div>
-    <div class="res" data-tip="Population"><span>👥</span><b id="r-pop">0/0</b></div>
+    <div class="res" data-tip="Nourriture"><img class="ri" data-res="food" alt=""><b id="r-food">0</b><i id="v-food"></i></div>
+    <div class="res" data-tip="Bois"><img class="ri" data-res="wood" alt=""><b id="r-wood">0</b><i id="v-wood"></i></div>
+    <div class="res" data-tip="Or"><img class="ri" data-res="gold" alt=""><b id="r-gold">0</b><i id="v-gold"></i></div>
+    <div class="res" data-tip="Pierre"><img class="ri" data-res="stone" alt=""><b id="r-stone">0</b><i id="v-stone"></i></div>
+    <div class="res" data-tip="Population"><span class="pop-ico">⚑</span><b id="r-pop">0/0</b></div>
     <div id="age-label">Âge Tribal</div>
     <div class="spacer"></div>
     <button id="idle-btn" class="small" title="Villageois inactif (touche .)">💤 <span id="idle-count">0</span></button>
@@ -26,7 +29,8 @@
       <option value="1.5">×1,5</option>
       <option value="2">×2</option>
     </select>
-    <button id="pause-btn" class="small" title="Pause (Échap)">⏸</button>
+    <button id="music-btn" class="small" title="Couper / rétablir le son">♫</button>
+    <button id="pause-btn" class="small" title="Menu (Échap)">☰</button>
   </div>
 
   <div id="messages"></div>
@@ -42,8 +46,10 @@
   <!-- Menu principal -->
   <div id="menu" class="overlay">
     <div class="panel">
+      <div class="crest">⚜</div>
       <h1>Aube des Royaumes</h1>
       <p class="sub">Stratégie en temps réel — bâtissez, récoltez, conquérez.</p>
+      <div class="divider"></div>
       <div class="form">
         <label>Difficulté de l'adversaire
           <select id="opt-diff">
@@ -88,6 +94,10 @@
   <div id="pause" class="overlay hidden">
     <div class="panel">
       <h2>Pause</h2>
+      <div class="form audio-form">
+        <label>Musique <input id="vol-music" type="range" min="0" max="1" step="0.05"></label>
+        <label>Effets sonores <input id="vol-sfx" type="range" min="0" max="1" step="0.05"></label>
+      </div>
       <button id="resume-btn" class="big">Reprendre</button>
       <button id="quit-btn">Abandonner la partie</button>
     </div>
