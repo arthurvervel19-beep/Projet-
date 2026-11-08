@@ -11,9 +11,10 @@ import { TerrainPainter } from '../terrain.js';
 import { buildTextures } from './textures.js';
 import { makeWorldUniforms, patchWorld } from './shading.js';
 import {
-  buildingModel, palisadeModel, stoneWallModel, scaffoldModel, unitGeometries, unitParts, SKIN_TONES, treeGeometries,
-  rockGeometries, bushGeometries, sheepGeometries, grassTuftGeometry, arrowGeometry, makeBanner, boxGeo, CIV_SKINS,
+  buildingModel, palisadeModel, stoneWallModel, gateModel, scaffoldModel, treeGeometries,
+  rockGeometries, bushGeometries, sheepGeometries, grassTuftGeometry, arrowGeometry, makeBanner, boxGeo,
 } from './models.js';
+import { unitGeometries, unitParts, SKIN_TONES, CIV_SKINS, CIV_HAIR, BONES, poseUnit, unitTop } from './units.js';
 import { civBuildingModel, civWallMaterial } from './civstyles.js';
 import { extraBuildingModel, EXTRA_TYPES } from './extraModels.js';
 
@@ -24,16 +25,9 @@ function unitMidHeight(type) {
   if (type === 'bomber') return 3.4;
   if (cls === 'air') return 2.3;
   if (type === 'robot') return 0.9;
-  return cls === 'cavalry' || cls === 'siege' ? 0.4 : 0.3;
+  return cls === 'cavalry' ? 0.6 : cls === 'siege' ? 0.4 : 0.38;
 }
-function unitTopHeight(type) {
-  const cls = UNITS[type].cls;
-  if (type === 'bomber') return 3.85;
-  if (cls === 'air') return 2.6;
-  if (type === 'robot') return 1.85;
-  if (type === 'trebuchet') return 1.6;
-  return cls === 'cavalry' || cls === 'siege' ? 1.0 : 0.82;
-}
+const unitTopHeight = unitTop;
 function unitScale(type) {
   const cls = UNITS[type].cls;
   if (cls === 'air') return 1;
@@ -41,7 +35,7 @@ function unitScale(type) {
   if (type === 'tank') return 0.95;
   return cls === 'siege' ? 0.85 : 0.78;
 }
-const HUMAN_SCALE = 0.78;
+const tmpSphere = new THREE.Sphere();
 const tmpM = new THREE.Matrix4(), tmpM2 = new THREE.Matrix4(), tmpQ = new THREE.Quaternion(), tmpE = new THREE.Euler();
 const tmpV = new THREE.Vector3(), tmpS = new THREE.Vector3(1, 1, 1), tmpC = new THREE.Color();
 const UP = new THREE.Vector3(0, 1, 0);
@@ -270,10 +264,10 @@ export class Renderer3D {
       iron: this.std({ color: 0x3a3a40, metalness: 0.8, roughness: 0.45 }),
       gold: this.std({ color: 0xe8c050, metalness: 1, roughness: 0.3 }),
       rope: this.std({ color: 0x8a7a5a, roughness: 1 }),
-      sack: this.std({ map: T.cloth, color: 0xd8c49a, roughness: 1 }),
+      sack: this.std({ map: T.cloth.map, color: 0xd8c49a, roughness: 1 }),
       straw: this.std({ map: T.thatch.map, color: 0xffffff, roughness: 1 }),
-      canvas: this.std({ map: T.cloth, color: 0xf0e8d4, roughness: 0.95 }),
-      sail: this.std({ map: T.cloth, color: 0xeee4cc, roughness: 0.95, side: THREE.DoubleSide }),
+      canvas: this.std({ map: T.cloth.map, color: 0xf0e8d4, roughness: 0.95 }),
+      sail: this.std({ map: T.cloth.map, color: 0xeee4cc, roughness: 0.95, side: THREE.DoubleSide }),
       embers: this.std({ color: 0x401000, emissive: 0xff5a10, emissiveIntensity: 2.2 }),
       ore: this.std({ color: 0xd8b040, metalness: 0.9, roughness: 0.35 }),
       rock: this.std({ color: 0x8a8a8a, roughness: 0.9, flatShading: true }),
@@ -291,7 +285,7 @@ export class Renderer3D {
       logs: tm(T.logs, 0xffffff, 0.85, 1, { side: THREE.DoubleSide }),
       kawara: tm(T.kawara, 0xffffff, 0.55, 1, { side: THREE.DoubleSide }),
       blackwood: tm(T.darkwood, 0x3a302a, 0.6, 0.6),
-      paper: this.std({ map: T.cloth, color: 0xf4efe2, roughness: 0.9, emissive: 0x403020, emissiveIntensity: 0.25 }),
+      paper: this.std({ map: T.cloth.map, color: 0xf4efe2, roughness: 0.9, emissive: 0x403020, emissiveIntensity: 0.25 }),
       clay: this.std({ color: 0xb8673a, roughness: 0.8 }),
       copper: this.std({ color: 0x5f9e8a, metalness: 0.6, roughness: 0.45 }),
       concrete: tm(T.plaster, 0xa8a8a2, 0.95, 0.6),
@@ -302,15 +296,15 @@ export class Renderer3D {
       glassDark: this.std({ color: 0x2a3a48, metalness: 0.4, roughness: 0.12, emissive: 0x3a5a70, emissiveIntensity: 0.3 }),
       asphalt: this.std({ color: 0x2c2e30, roughness: 0.95 }),
       paint: this.std({ color: 0xf2f2ee, roughness: 0.5 }),
-      sandbag: this.std({ map: T.cloth, color: 0xb8a070, roughness: 1 }),
+      sandbag: this.std({ map: T.cloth.map, color: 0xb8a070, roughness: 1 }),
       travertine: tm(T.stucco, 0xf0e4cc, 0.9, 0.6, { side: THREE.DoubleSide }),
       lacquer: this.std({ color: 0xb8301e, roughness: 0.4 }),
     };
     // matériaux d'équipe
     this.teams = this.game.players.map((p) => ({
       glow: patchWorld(new THREE.MeshBasicMaterial({ color: new THREE.Color(p.color).lerp(new THREE.Color(0xffffff), 0.35) }), this.U),
-      cloth: this.std({ map: T.cloth, color: new THREE.Color(p.color), roughness: 0.85 }),
-      banner: this.std({ map: T.cloth, color: new THREE.Color(p.color), roughness: 0.85, side: THREE.DoubleSide }, { banner: true }),
+      cloth: this.std({ map: T.cloth.map, color: new THREE.Color(p.color), roughness: 0.85 }),
+      banner: this.std({ map: T.cloth.map, color: new THREE.Color(p.color), roughness: 0.85, side: THREE.DoubleSide }, { banner: true }),
     }));
   }
 
@@ -395,12 +389,17 @@ export class Renderer3D {
     const T = this.T;
     const fogOpt = {};
     this.UM = {
-      cloth: this.std({ map: T.cloth, roughness: 0.85 }, fogOpt),
-      skin: this.std({ roughness: 0.6 }, fogOpt),
-      metal: this.std({ metalness: 0.85, roughness: 0.32 }, fogOpt),
-      leather: this.std({ roughness: 0.65 }, fogOpt),
+      cloth: this.std({ map: T.cloth.map, normalMap: T.cloth.normal, normalScale: new THREE.Vector2(0.7, 0.7), roughness: 0.88 }, fogOpt),
+      skin: this.std({ roughness: 0.55 }, fogOpt),
+      metal: this.std({ metalness: 0.85, roughness: 0.3, normalMap: T.metalNoise, normalScale: new THREE.Vector2(0.25, 0.25) }, fogOpt),
+      mail: this.std({ map: T.mail.map, normalMap: T.mail.normal, metalness: 0.75, roughness: 0.42 }, fogOpt),
+      leather: this.std({ map: T.leather.map, normalMap: T.leather.normal, normalScale: new THREE.Vector2(0.6, 0.6), roughness: 0.62 }, fogOpt),
       wood: this.std({ map: T.darkwood.map, roughness: 0.8 }, fogOpt),
+      paint: this.std({ map: T.leather.map, normalMap: T.leather.normal, normalScale: new THREE.Vector2(0.3, 0.3), roughness: 0.55 }, fogOpt),
       gold: this.std({ metalness: 1, roughness: 0.28 }, fogOpt),
+      hair: this.std({ map: T.fur.map, normalMap: T.fur.normal, roughness: 0.78, side: THREE.DoubleSide }, fogOpt),
+      coat: this.std({ map: T.coat.map, normalMap: T.coat.normal, normalScale: new THREE.Vector2(0.4, 0.4), roughness: 0.48 }, fogOpt),
+      gloss: this.std({ roughness: 0.12, metalness: 0.05 }, fogOpt),
       glow: patchWorld(new THREE.MeshBasicMaterial({ color: 0xffffff }), this.U),
     };
     this.unitDefs = {};
@@ -429,12 +428,14 @@ export class Renderer3D {
       this.scene.add(mesh);
       this.parts.set(key, { mesh, n: 0 });
     }
-    this.teamColors = this.game.players.map((p) => ({ team: new THREE.Color(p.color), teamDk: new THREE.Color(p.color).multiplyScalar(0.55) }));
+    this.teamColors = this.game.players.map((p) => ({ team: new THREE.Color(p.color), teamDk: new THREE.Color(p.color).multiplyScalar(0.55), teamLt: new THREE.Color(p.color).lerp(new THREE.Color(0xffffff), 0.35) }));
     this.skins = SKIN_TONES.map((c) => new THREE.Color(c));
     this.civSkins = {};
     for (const [civ, arr] of Object.entries(CIV_SKINS)) this.civSkins[civ] = arr.map((c) => new THREE.Color(c));
+    this.civHair = {};
+    for (const [civ, arr] of Object.entries(CIV_HAIR)) this.civHair[civ] = arr.map((c) => new THREE.Color(c));
     this.bones = {};
-    for (const b of ['root', 'body', 'head', 'legL', 'legR', 'armL', 'armR', 'tool', 'shield', 'back', 'hbody', 'hhead', 'hlegFL', 'hlegFR', 'hlegBL', 'hlegBR', 'tail']) this.bones[b] = new THREE.Matrix4();
+    for (const b of BONES) this.bones[b] = new THREE.Matrix4();
   }
 
   partsFor(type, civ) {
@@ -442,88 +443,7 @@ export class Renderer3D {
   }
 
   // calcule les os d'une unité dans this.bones
-  pose(type, st, x, y, z, yaw, scale, dead = 0) {
-    const B = this.bones;
-    const def = UNITS[type];
-    const t = this.time + st.seed * 10;
-    const walk = st.walk;
-    const ph = st.phase;
-    B.root.compose(tmpV.set(x, y, z), tmpQ.setFromEuler(tmpE.set(0, yaw, 0)), tmpS.set(scale, scale, scale));
-    if (dead) { B.root.multiply(tmpM.makeTranslation(0, 0.12, 0)).multiply(tmpM.makeRotationZ(Math.PI / 2 * Math.min(1, dead * 4))); }
-    const cls = def.cls;
-    if (cls === 'air') {
-      const alt = type === 'bomber' ? 3.4 : 2.3;
-      B.root.compose(tmpV.set(x, y + (dead ? Math.max(0, alt - dead * alt) : alt + Math.sin(t * 1.7) * 0.06), z), tmpQ.setFromEuler(tmpE.set(dead ? 0.6 : 0, yaw, st.bank || 0, 'YXZ')), tmpS.set(scale, scale, scale));
-      if (type === 'bomber') B.tool.copy(B.root).multiply(tmpM.makeTranslation(0, 0, 0.78)).multiply(tmpM2.makeRotationZ(t * 45));
-      else B.tool.copy(B.root);
-      return;
-    }
-    if (cls === 'siege') {
-      const sw = st.swing;
-      if (type === 'tank') { B.tool.copy(B.root).multiply(tmpM.makeTranslation(0, 0.45, sw > 0 ? -Math.sin(sw * Math.PI) * 0.06 : 0)).multiply(tmpM2.makeRotationY(st.turret || 0)); return; }
-      if (type === 'trebuchet') { B.tool.copy(B.root).multiply(tmpM.makeTranslation(0, 1.12, 0)).multiply(tmpM2.makeRotationX(sw > 0 ? 0.75 - Math.sin(Math.min(1, sw * 1.4) * Math.PI / 2) * 2.4 : 0.75)); return; }
-      if (type === 'cannon' || type === 'field_gun') { B.tool.copy(B.root).multiply(tmpM.makeTranslation(0, 0.4, 0.05 - (sw > 0 ? Math.sin(sw * Math.PI) * 0.15 : 0))).multiply(tmpM2.makeRotationX(-0.1)); return; }
-      if (type === 'ram') B.tool.copy(B.root).multiply(tmpM.makeTranslation(0, 0.5, sw > 0 ? Math.sin(sw * Math.PI) * 0.25 : 0));
-      else if (type === 'mangonel') B.tool.copy(B.root).multiply(tmpM.makeTranslation(0, 0.3, -0.12)).multiply(tmpM2.makeRotationX(-1.2 + (sw > 0 ? Math.sin(Math.min(1, sw * 1.6) * Math.PI / 2) * 1.7 : 0)));
-      else B.tool.copy(B.root).multiply(tmpM.makeTranslation(0, 0.45, 0.1 - (sw > 0 ? Math.sin(sw * Math.PI) * 0.1 : 0))).multiply(tmpM2.makeRotationX(-0.12));
-      return;
-    }
-    let bodyBase = B.root;
-    if (cls === 'cavalry') {
-      const bob = Math.abs(Math.sin(ph)) * 0.05 * walk;
-      B.hbody.copy(B.root).multiply(tmpM.makeTranslation(0, 0.56 + bob, 0));
-      const legs = [['hlegFL', -0.11, 0.3, 0], ['hlegFR', 0.11, 0.3, Math.PI], ['hlegBL', -0.11, -0.3, Math.PI], ['hlegBR', 0.11, -0.3, 0]];
-      for (const [b, lx, lz, off] of legs) B[b].copy(B.hbody).multiply(tmpM.makeTranslation(lx, -0.04, lz)).multiply(tmpM2.makeRotationX(Math.sin(ph + off) * 0.75 * walk));
-      B.hhead.copy(B.hbody).multiply(tmpM.makeTranslation(0, 0.1, 0.36)).multiply(tmpM2.makeRotationX(Math.sin(ph * 2) * 0.08 * walk + (walk < 0.1 ? Math.max(0, Math.sin(t * 0.4)) * 0.4 : 0)));
-      B.tail.copy(B.hbody).multiply(tmpM.makeTranslation(0, 0.12, -0.42)).multiply(tmpM2.makeRotationX(0.5 + Math.sin(t * 2.3) * 0.12)).multiply(tmpM.makeRotationZ(Math.sin(t * 1.7) * 0.15));
-      B.body.copy(B.hbody).multiply(tmpM.makeTranslation(0, type === 'chariot' ? 0.12 : 0.22, type === 'chariot' ? -0.72 : -0.03));
-      B.legL.copy(B.body); B.legR.copy(B.body);
-      bodyBase = null;
-    } else {
-      const bob = Math.abs(Math.sin(ph)) * 0.035 * walk + Math.sin(t * 2) * 0.004;
-      B.body.copy(B.root).multiply(tmpM.makeTranslation(0, 0.48 + bob, 0)).multiply(tmpM2.makeRotationX(0.06 * walk + st.lean));
-      B.legL.copy(B.root).multiply(tmpM.makeTranslation(-0.075, 0.48 + bob, 0)).multiply(tmpM2.makeRotationX(Math.sin(ph) * 0.65 * walk));
-      B.legR.copy(B.root).multiply(tmpM.makeTranslation(0.075, 0.48 + bob, 0)).multiply(tmpM2.makeRotationX(-Math.sin(ph) * 0.65 * walk));
-    }
-    void bodyBase;
-    B.head.copy(B.body).multiply(tmpM.makeTranslation(0, 0.38, 0)).multiply(tmpM2.makeRotationY(Math.sin(t * 0.5) * 0.15 * (1 - walk)));
-    B.back.copy(B.body).multiply(tmpM.makeTranslation(0, 0.2, 0));
-    // bras : marche, attaque ou travail
-    let aL = -Math.sin(ph) * 0.5 * walk * (cls === 'cavalry' ? 0.2 : 1), aR = Math.sin(ph) * 0.5 * walk * (cls === 'cavalry' ? 0.2 : 1);
-    let toolA = 1.25, lz = 0;
-    const sw = st.swing; // 0..1 progression de l'attaque
-    const work = st.work;
-    if (cls === 'cavalry') { aR = -0.6; toolA = type === 'scout' ? 1.2 : 1.45; aL = -0.7; }
-    if (type === 'chariot') { aL = -0.5; aR = -0.3; }
-    if (type === 'spearman' || type === 'royal_guard') { aR = -0.35; toolA = 0.4; }
-    if (type === 'archer' || type === 'crossbowman') { aL = -0.5; aR = -0.3; }
-    if (type === 'slinger') { aR = -0.2; toolA = 0.2; }
-    const gun = GUNS.has(type);
-    if (gun) { aR = -0.55; aL = -0.45; toolA = 1.0; }
-    if (gun && st.aim) { aR = -1.5; aL = -1.35; toolA = 1.57; lz = 0.02; }
-    if (type === 'robot') { aL = st.aim ? -1.4 : -0.3; aR = st.aim ? -1.5 : -0.3; toolA = 1.57; }
-    if (sw > 0 && (gun || type === 'robot')) {
-      lz = -Math.max(0, 1 - sw * 3) * 0.05;
-    } else if (sw > 0) {
-      const e = sw < 0.35 ? sw / 0.35 : 1 - (sw - 0.35) / 0.65;
-      if (type === 'archer' || type === 'crossbowman' || type === 'skirmisher' || type === 'chariot') { aL = -1.45; aR = -1.4 + e * 0.3; lz = e * 0.1; toolA = type === 'skirmisher' ? 1.4 - e : toolA; }
-      else if (type === 'slinger') { aR = -2.6 - Math.sin(sw * Math.PI * 4) * 0.6; toolA = 0.3 + e * 2; aL = -0.4; }
-      else if (type === 'spearman' || type === 'royal_guard' || (cls === 'cavalry' && type !== 'scout')) { aR = -0.9 - e * 0.8; toolA = 1.55; }
-      else { aR = sw < 0.35 ? -0.4 - (sw / 0.35) * 2.4 : -2.8 + ((sw - 0.35) / 0.65) * 2.3; toolA = 1.3; aL = -0.6; }
-    } else if (work > 0) {
-      const wk = st.workKind;
-      const c = Math.sin(t * (wk === 'hammer' ? 9 : 5.5));
-      if (wk === 'axe' || wk === 'pick') { aR = -1.5 - c * 0.9; aL = -1.3 - c * 0.9; toolA = 1.4; }
-      else if (wk === 'hammer') { aR = -1.1 - Math.max(0, c) * 0.8; aL = -0.5; toolA = 1.5; }
-      else if (wk === 'hoe') { aR = -0.9 - c * 0.5; aL = -0.8 - c * 0.5; toolA = 1.9; }
-      else { aR = -0.9 + c * 0.25; aL = -0.9 - c * 0.25; toolA = 1.0; }
-      if (wk === 'axe' || wk === 'pick' || wk === 'hoe') B.body.multiply(tmpM.makeRotationX(0.18 + c * 0.08));
-    }
-    B.armL.copy(B.body).multiply(tmpM.makeTranslation(-0.2, 0.34, 0)).multiply(tmpM2.makeRotationX(aL)).multiply(tmpM.makeRotationZ(-0.1));
-    B.armR.copy(B.body).multiply(tmpM.makeTranslation(0.2, 0.34, lz)).multiply(tmpM2.makeRotationX(aR)).multiply(tmpM.makeRotationZ(0.1));
-    B.tool.copy(B.armR).multiply(tmpM.makeTranslation(0, -0.31, 0)).multiply(tmpM2.makeRotationX(toolA));
-    B.shield.copy(B.armL).multiply(tmpM.makeTranslation(0, -0.22, 0.07)).multiply(tmpM2.makeRotationX(-aL));
-  }
+  pose(type, st, x, y, z, yaw, scale, dead = 0) { poseUnit(this.bones, type, st, x, y, z, yaw, scale, this.time, dead); }
 
   emitUnit(u, type, owner, x, y, z, yaw, st, dead = 0) {
     const def = UNITS[type];
@@ -531,18 +451,22 @@ export class Renderer3D {
     this.pose(type, st, x, y, z, yaw, scale, dead);
     const tc = this.teamColors[owner] || { team: tmpC.set(0x888888), teamDk: tmpC };
     const civ = this.civOf(owner);
-    const skin = (this.civSkins[civ] || this.skins)[st.seed * 4 | 0];
-    const toolKind = st.toolKind, carry = st.carry;
+    const vi = (st.seed * 4 | 0) & 3;
+    const skin = (this.civSkins[civ] || this.skins)[vi];
+    const hair = (this.civHair[civ] || this.civHair.francs)[(st.seed * 17 | 0) & 3];
+    const toolKind = st.toolKind, carry = st.carry, far = this.lodFar;
     const defs = (this.unitDefs[civ] || this.unitDefs.francs)[type];
     for (const pt of defs) {
       if (pt.tool && pt.tool !== toolKind) continue;
       if (pt.carry && pt.carry !== carry) continue;
+      if (pt.v && !pt.v.includes(vi)) continue;
+      if (pt.d && far) continue;
       const slot = this.parts.get(pt.key);
       if (!slot) continue;
       if (slot.n >= slot.mesh.instanceMatrix.count) continue;
       tmpM.multiplyMatrices(this.bones[pt.b], pt.local);
       slot.mesh.setMatrixAt(slot.n, tmpM);
-      const col = pt.fixed || (pt.c === 'team' ? tc.team : pt.c === 'teamDk' ? tc.teamDk : skin);
+      const col = pt.fixed || (pt.c === 'team' ? tc.team : pt.c === 'teamDk' ? tc.teamDk : pt.c === 'teamLt' ? tc.teamLt : pt.c === 'hair' ? hair : skin);
       if (dead) tmpC.copy(col).multiplyScalar(0.55); else tmpC.copy(col);
       slot.mesh.setColorAt(slot.n, tmpC);
       slot.n++;
@@ -589,6 +513,7 @@ export class Renderer3D {
       st.workKind = st.toolKind;
       st.carry = u.carry && u.carry.amount > 0 ? u.carry.type : null;
       const y = this.heightAt(x, z);
+      if (!this.frustum.intersectsSphere(tmpSphere.set(tmpV.set(x, y + 0.7, z), 2.2))) continue;
       this.emitUnit(u, u.type, u.owner, x, y, z, st.yaw, st);
       // poussière des cavaliers
       if (moving && UNITS[u.type].cls === 'cavalry' && Math.random() < dt * 8) this.dust.emit(x, y + 0.05, z, (Math.random() - 0.5) * 0.3, 0.25, (Math.random() - 0.5) * 0.3, 0.9, 0.25, 0.7, [0.6, 0.52, 0.4, 0.35], [0.6, 0.55, 0.45, 0]);
@@ -835,7 +760,8 @@ export class Renderer3D {
     if (!t) {
       const def = BUILDINGS[type];
       const team = this.teams[owner] || this.teams[0];
-      if (EXTRA_TYPES.has(type)) t = extraBuildingModel(type, def.size, this.M, team, civ);
+      if (def.gate) t = gateModel(type, true, this.M, team, civWallMaterial(civ, this.M));
+      else if (EXTRA_TYPES.has(type)) t = extraBuildingModel(type, def.size, this.M, team, civ);
       else t = civ !== 'francs' && !def.farm && !def.wall ? civBuildingModel(type, def.size, this.M, team, civ) : buildingModel(type, def.size, this.M, team);
       this.templates.set(key, t);
     }
@@ -869,17 +795,25 @@ export class Renderer3D {
     return Math.max(-0.05, (lo + hi) / 2);
   }
 
+  // voisins reliés à un segment de rempart (les portes se raccordent aux murs de leur famille)
   palMask(b) {
     const m = this.game.map;
+    const fam = (t) => (t === 'gate' ? 'stone_wall' : t === 'palisade_gate' ? 'palisade' : t);
+    const me = BUILDINGS[b.type];
     let mask = 0;
     [[1, 0], [-1, 0], [0, 1], [0, -1]].forEach(([dx, dy], i) => {
       const x = b.tx + dx, y = b.ty + dy;
       if (x < 0 || y < 0 || x >= m.w || y >= m.h) return;
       const e = this.game.entities.get(m.occ[y * m.w + x]);
-      if (e && e.kind === 'building' && e.type === b.type && !e.dead) mask |= 1 << i;
+      if (!e || e.kind !== 'building' || e.dead) return;
+      const d = BUILDINGS[e.type];
+      if (me.gate ? d.wall : fam(e.type) === fam(b.type) && !(d.gate && BUILDINGS[b.type].gate)) mask |= 1 << i;
     });
     return mask;
   }
+
+  // orientation d'une porte d'après les remparts voisins : 1 = le long de X, 2 = le long de Z
+  gateOrient(mask) { return (mask & 3) || !(mask & 12) ? 1 : 2; }
 
   syncBuildings(dt) {
     const g = this.game, me = this.me;
@@ -890,11 +824,15 @@ export class Renderer3D {
       seen.add(b.id);
       let e = this.buildings.get(b.id);
       const def = BUILDINGS[b.type];
-      const mask = def.wall ? this.palMask(b) : 0;
+      const mask = def.gate ? this.gateOrient(this.palMask(b)) : def.wall ? this.palMask(b) : 0;
       if (e && def.wall && e.mask !== mask) { this.scene.remove(e.group); e = null; }
       if (!e) {
-        const group = def.wall ? (b.type === 'stone_wall' ? stoneWallModel(mask, this.M, this.teams[b.owner], civWallMaterial(this.civOf(b.owner), this.M)) : palisadeModel(mask, this.M)) : this.instantiate(b.type, b.owner);
-        if (def.wall) group.userData = { anim: { banners: [] } };
+        let group;
+        if (def.gate) group = gateModel(b.type, mask === 1, this.M, this.teams[b.owner], civWallMaterial(this.civOf(b.owner), this.M));
+        else if (def.wall) {
+          group = b.type === 'stone_wall' ? stoneWallModel(mask, this.M, this.teams[b.owner], civWallMaterial(this.civOf(b.owner), this.M)) : palisadeModel(mask, this.M);
+          group.userData = { anim: { banners: [] } };
+        } else group = this.instantiate(b.type, b.owner);
         group.traverse((o) => { o.userData.entityId = b.id; });
         const base = this.baseHeight(b);
         group.position.set(b.tx, base, b.ty);
@@ -919,6 +857,19 @@ export class Renderer3D {
       // animations
       const an = e.group.userData.anim;
       if (an && an.blades) an.blades.rotation.z += dt * 0.9;
+      if (an && an.doors) {
+        // les battants s'ouvrent à l'approche d'une unité du propriétaire
+        let want = 0;
+        if (b.built && !b.locked) {
+          for (const u of g.units) {
+            if (u.dead || u.owner !== b.owner) continue;
+            if (Math.abs(u.x - b.x) < 1.6 && Math.abs(u.y - b.y) < 1.6) { want = 1; break; }
+          }
+        }
+        e.open = (e.open || 0) + (want - (e.open || 0)) * Math.min(1, dt * 4);
+        const a = e.open * 1.5;
+        an.doors[0].rotation.y = a; an.doors[1].rotation.y = -a;
+      }
       if (an && an.rocket) {
         // décollage de la fusée dans les dernières secondes du compte à rebours
         const left = b.countdown;
@@ -1111,12 +1062,16 @@ export class Renderer3D {
     } else if (this.rally) this.rally.visible = false;
     // fantôme de placement
     const pl = ui.placing;
-    const key = pl ? `${pl.type}` : '';
+    const gOr = pl && BUILDINGS[pl.type].gate ? this.gateOrient(this.palMask({ tx: pl.tx, ty: pl.ty, type: pl.type })) : 0;
+    const key = pl ? `${pl.type}|${gOr}` : '';
     if (key !== this.ghostKey) {
       if (this.ghost) { this.scene.remove(this.ghost); this.ghost = null; }
       if (this.ghostFeet) { for (const f of this.ghostFeet) this.scene.remove(f); this.ghostFeet = null; }
       this.ghostKey = key;
-      if (pl && !BUILDINGS[pl.type].wall) {
+      if (pl && BUILDINGS[pl.type].gate) {
+        this.ghost = gateModel(pl.type, gOr === 1, this.M, this.teams[this.me], civWallMaterial(this.civOf(this.me), this.M));
+        this.scene.add(this.ghost);
+      } else if (pl && !BUILDINGS[pl.type].wall) {
         this.ghost = this.template(pl.type, this.me).clone(true);
         this.scene.add(this.ghost);
       }
@@ -1307,19 +1262,23 @@ export class Renderer3D {
     this.time += dt;
     this.U.uTime.value = this.time;
     const c = this.camState;
+    this.updateCamera();
+    // champ de vision (avec marge pour les ombres) : les unités hors écran ne sont pas animées
+    this.frustum = this.frustum || new THREE.Frustum();
+    this.frustum.setFromProjectionMatrix(tmpM.multiplyMatrices(this.camera.projectionMatrix, this.camera.matrixWorldInverse));
     this.updateFog(dt);
     this.syncResources();
     this.gTimer = (this.gTimer || 0) - dt;
     if (this.gTimer <= 0) { this.gTimer = 0.5; this.updateGrassBlocking(); }
     this.syncBuildings(dt);
+    // les petits détails (yeux, oreilles, boucles) ne sont dessinés que de près
+    this.lodFar = c.dist > 40 || this.q.tex === 'low';
     this.syncUnits(alpha, dt);
     this.syncSheep();
     this.syncEffects(dt);
     this.syncSelection(ui);
     this.smoke.update(dt); this.fire.update(dt); this.dust.update(dt);
     this.M.embers.emissiveIntensity = 1.8 + Math.sin(this.time * 7) * 0.4 + Math.sin(this.time * 13) * 0.2;
-    void c;
-    this.updateCamera();
     if (this.composer) this.composer.render(); else this.renderer.render(this.scene, this.camera);
     this.drawOverlay(alpha, ui);
   }
@@ -1458,17 +1417,19 @@ export class Renderer3D {
     return this.ir;
   }
 
-  unitGroup(type, owner, civ = this.civOf(owner)) {
+  unitGroup(type, owner, civ = this.civOf(owner), pose = null) {
     // modèle non instancié d'une unité (pour les portraits)
     const grp = new THREE.Group();
-    const st = { yaw: 0, phase: 0, walk: 0, seed: 0.3, swing: 0, work: 0, lean: 0, toolKind: type === 'villager' ? 'axe' : null, carry: null };
-    this.pose(type, st, 0, 0, 0, 0, unitScale(type));
+    const st = { yaw: 0, phase: 0, walk: 0, seed: 0.3, swing: 0, work: 0, lean: 0, toolKind: type === 'villager' ? 'axe' : null, carry: null, ...(pose || {}) };
+    this.pose(type, st, 0, 0, 0, 0, unitScale(type), st.dead || 0);
     const tc = this.teamColors[owner] || this.teamColors[0];
     const skins = this.civSkins[civ] || this.skins;
+    const hairs = this.civHair[civ] || this.civHair.francs;
     for (const pt of this.partsFor(type, civ)) {
       if (pt.tool && pt.tool !== st.toolKind) continue;
       if (pt.carry) continue;
-      const col = pt.fixed || (pt.c === 'team' ? tc.team : pt.c === 'teamDk' ? tc.teamDk : skins[1]);
+      if (pt.v && !pt.v.includes(1)) continue;
+      const col = pt.fixed || (pt.c === 'team' ? tc.team : pt.c === 'teamDk' ? tc.teamDk : pt.c === 'teamLt' ? tc.teamLt : pt.c === 'hair' ? hairs[1] : skins[1]);
       const mat = this.UM[pt.m].clone();
       mat.onBeforeCompile = () => {};
       mat.color = col.clone();
@@ -1499,7 +1460,7 @@ export class Renderer3D {
       camera.lookAt(ctr.x, ctr.y + (cls === 'cavalry' ? 0.05 : 0.08), ctr.z);
     } else {
       const def = BUILDINGS[type];
-      obj = def.wall ? (type === 'stone_wall' ? stoneWallModel(4, this.M, this.teams[owner], civWallMaterial(civ, this.M)) : palisadeModel(3, this.M)) : this.template(type, owner, civ).clone(true);
+      obj = def.wall && !def.gate ? (type === 'stone_wall' ? stoneWallModel(4, this.M, this.teams[owner], civWallMaterial(civ, this.M)) : palisadeModel(3, this.M)) : this.template(type, owner, civ).clone(true);
       if (def.farm) {
         const crops = new THREE.InstancedMesh(this.cropMesh.geometry, this.std({ vertexColors: true, side: THREE.DoubleSide, color: 0xd8c060 }), 64);
         let k = 0;

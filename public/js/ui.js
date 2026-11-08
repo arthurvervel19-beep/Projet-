@@ -140,7 +140,7 @@ export class UI {
     if (e.button !== 0) return;
     if (this.placing) {
       const def = BUILDINGS[this.placing.type];
-      if (def.wall) { this.placing.lineStart = [Math.floor(w.x), Math.floor(w.y)]; this.updatePlacement(w); return; }
+      if (def.wall && !def.gate) { this.placing.lineStart = [Math.floor(w.x), Math.floor(w.y)]; this.updatePlacement(w); return; }
       this.placeBuilding(e.shiftKey);
       return;
     }
@@ -380,7 +380,7 @@ export class UI {
     const def = BUILDINGS[this.placing.type];
     this.placing.tx = Math.round(w.x - def.size / 2);
     this.placing.ty = Math.round(w.y - def.size / 2);
-    if (def.wall && this.placing.lineStart) {
+    if (def.wall && !def.gate && this.placing.lineStart) {
       const [x0, y0] = this.placing.lineStart, x1 = Math.floor(w.x), y1 = Math.floor(w.y);
       const tiles = [];
       const n = Math.max(Math.abs(x1 - x0), Math.abs(y1 - y0));
@@ -392,7 +392,7 @@ export class UI {
         tiles.push([x, y]); lx = x; ly = y;
       }
       this.placing.tiles = tiles.slice(0, 40);
-    } else if (def.wall) this.placing.tiles = [[Math.floor(w.x), Math.floor(w.y)]];
+    } else if (def.wall && !def.gate) this.placing.tiles = [[Math.floor(w.x), Math.floor(w.y)]];
   }
 
   placeBuilding(shift) {
@@ -589,6 +589,7 @@ export class UI {
       if (def.farm && e.built) html += `<div class="row"><span class="stat">${RI('food')} Nourriture restante : <b>${Math.ceil(e.food)}</b></span></div>`;
       if (def.pop) html += `<div class="row"><span class="stat">${icon('pop')} +${def.pop + (e.type === 'house' ? g.players[e.owner].mods.housePop : 0)} population</span></div>`;
       if (def.income && e.built) html += `<div class="row"><span class="stat">${RI('gold')} +${(def.income.gold * g.players[e.owner].mods.income.bank).toFixed(1)} or / s</span></div>`;
+      if (def.gate && e.built) html += `<div class="row"><span class="stat">${icon(e.locked ? 'lock' : 'unlock')} ${e.locked ? 'Verrouillée : personne ne passe' : 'Ouverte à vos unités, fermée à l’ennemi'}</span></div>`;
       if (def.factory && e.built) html += `<div class="row"><span class="stat">${RI(e.mode || 'wood')} +${(1.5 * g.players[e.owner].mods.income.factory).toFixed(1)} ${RES_NAME[e.mode || 'wood'].toLowerCase()} / s</span></div>`;
       if (e.countdown !== undefined) html += `<div class="row"><span class="stat">${icon('clock')} ${def.space ? 'Lancement dans' : 'Victoire dans'} <b>${fmtTime(e.countdown)}</b></span></div>`;
       if (def.market && e.owner === this.me) {
@@ -674,6 +675,13 @@ export class UI {
           icon: icon('ageUp'), key: 'Z', disabled: !reqOk || !g.canAfford(p, next.cost),
           tip: `<b>Passer à l'${next.name.slice(2)}</b> (Z)<div>Débloque de nouveaux bâtiments, unités et technologies.</div><div class="tip-stats">${icon('clock')} ${next.time}s</div>${costHtml(next.cost)}${reqOk ? '' : `<div class="no">${g.ageRequirementText(p)}</div>`}`,
           action: () => this.g.issue(this.me, { type: 'ageUp', building: b.id }) && (this.hudTimer = 0),
+        });
+      }
+      if (def.gate) {
+        btns.push({
+          icon: icon(b.locked ? 'unlock' : 'lock'), key: 'L', badge: b.locked ? 'fermée' : '',
+          tip: b.locked ? '<b>Déverrouiller la porte</b> (L)<div>Vos unités peuvent de nouveau la franchir.</div>' : '<b>Verrouiller la porte</b> (L)<div>Plus personne ne passe, même vos unités.</div>',
+          action: () => { this.g.issue(this.me, { type: 'gateLock', building: b.id }); this.cmdSig = ''; this.hudTimer = 0; },
         });
       }
       if (def.factory) {

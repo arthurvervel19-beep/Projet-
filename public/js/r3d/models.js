@@ -657,6 +657,90 @@ export function stoneWallModel(mask, M, team, wallMat = null) {
   return B.build();
 }
 
+// porte (palissade ou porterie de pierre) ; alongX : le rempart suit l'axe X, on passe selon Z
+export function gateModel(type, alongX, M, team, wallMat = null) {
+  const root = new THREE.Group();
+  const pivot = new THREE.Group();
+  if (!alongX) { pivot.rotation.y = Math.PI / 2; pivot.position.set(0, 0, 1); }
+  root.add(pivot);
+  const B = new Builder(M);
+  const doors = [];
+  // battant de porte : charnière à l'origine, s'étend vers +x (sens = 1) ou -x (sens = -1)
+  const leaf = (hx, sens, w, h, wood) => {
+    const D = new Builder(M);
+    const c = sens * w / 2;
+    if (wood === 'stakes') {
+      const n = 4;
+      for (let i = 0; i < n; i++) {
+        const x = sens * (w * (i + 0.5) / n);
+        const hh = h + (i % 2) * 0.05;
+        D.add(cylGeo(0.045, 0.05, hh, 7, 2), M.log, x, hh / 2, 0);
+        D.add(coneGeo(0.047, 0.12, 7), M.log, x, hh + 0.06, 0);
+      }
+      for (const y of [0.25, h - 0.2]) D.box(w, 0.06, 0.05, M.beam, c, y, 0.05);
+      D.beam([sens * 0.03, 0.28, 0.06], [sens * (w - 0.03), h - 0.2, 0.06], 0.04, M.beam);
+      D.beam([sens * 0.03, 0.28, -0.06], [sens * (w - 0.03), h - 0.2, -0.06], 0.04, M.beam);
+    } else {
+      D.box(w, h, 0.06, M.planks || M.darkwood, c, 0, 0);
+      for (const y of [0.18, h * 0.5, h - 0.18]) {
+        D.box(w * 0.96, 0.045, 0.075, M.iron || M.darkmetal || M.slit, c, y - 0.02, 0);
+        for (let k = 1; k < 4; k++) D.add(new THREE.SphereGeometry(0.013, 6, 4), M.iron || M.slit, sens * w * k / 4, y, 0.04);
+      }
+      D.box(0.03, 0.1, 0.09, M.iron || M.slit, sens * (w - 0.06), h * 0.45, 0);
+    }
+    const g = D.build();
+    g.position.set(hx, 0, 0.5);
+    pivot.add(g);
+    doors.push(g);
+  };
+  if (type === 'palisade_gate') {
+    const post = (x) => {
+      B.add(cylGeo(0.085, 0.095, 1.5, 9, 2), M.log, x, 0.75, 0.5);
+      B.add(coneGeo(0.09, 0.18, 9), M.log, x, 1.59, 0.5);
+    };
+    post(0.07); post(0.93);
+    // linteau, auvent et chemin de garde
+    B.beam([0.0, 1.22, 0.5], [1.0, 1.22, 0.5], 0.09, M.log);
+    B.beam([0.07, 1.0, 0.5], [0.3, 1.22, 0.5], 0.05, M.beam); B.beam([0.93, 1.0, 0.5], [0.7, 1.22, 0.5], 0.05, M.beam);
+    B.box(0.98, 0.04, 0.34, M.beam, 0.5, 1.27, 0.5);
+    for (const z of [0.36, 0.64]) for (let i = 0; i < 6; i++) B.add(cylGeo(0.03, 0.03, 0.22, 6), M.log, 0.1 + i * 0.16, 1.4, z);
+    B.box(0.18, 0.26, 0.015, team.cloth, 0.5, 0.86, 0.66);
+    B.box(0.18, 0.26, 0.015, team.cloth, 0.5, 0.86, 0.34);
+    leaf(0.13, 1, 0.37, 0.95, 'stakes');
+    leaf(0.87, -1, 0.37, 0.95, 'stakes');
+  } else {
+    const STONE = wallMat || M.darkstone;
+    const H = 1.35, T = 0.5;
+    // tours de flanquement
+    for (const x of [-0.02, 1.02]) {
+      B.add(cylGeo(0.27, 0.31, H + 1.2, 14, 1.3), STONE, x, (H + 1.2) / 2 - 0.2, 0.5);
+      B.add(cylGeo(0.33, 0.33, 0.12, 14), STONE, x, H + 1.0, 0.5);
+      roundCrenels(B, STONE, x, 0.5, 0.3, H + 1.06, 9, 0.11);
+      B.add(cylGeo(0.315, 0.315, 0.09, 14), team.cloth, x, 0.27, 0.5);
+      B.add(cylGeo(0.335, 0.335, 0.06, 14), team.cloth, x, H + 0.88, 0.5);
+      for (const z of [0.2, 0.8]) B.box(0.05, 0.22, 0.02, M.slit, x, H * 0.55, z + (z < 0.5 ? 0.01 : -0.01));
+      B.add(coneGeo(0.36, 0.5, 14), M.slate || STONE, x, H + 1.45, 0.5);
+    }
+    // bloc au-dessus du passage, avec arc et créneaux
+    B.box(0.74, H + 0.35 - 0.98, T + 0.16, STONE, 0.5, 0.98, 0.5);
+    for (const z of [0.5 - (T + 0.16) / 2, 0.5 + (T + 0.16) / 2]) {
+      B.add(new THREE.TorusGeometry(0.255, 0.05, 6, 14, Math.PI), STONE, 0.5, 0.74, z);
+      B.box(0.06, 0.12, 0.03, STONE, 0.5, 0.95, z);
+    }
+    for (let i = 0; i < 4; i++) for (const side of [-1, 1]) B.box(0.12, 0.16, 0.1, STONE, 0.2 + i * 0.2, H + 0.35, 0.5 + side * (T / 2 + 0.02));
+    B.box(0.76, 0.06, T + 0.18, team.cloth, 0.5, 1.0, 0.5);
+    // herse relevée et bannière
+    for (let i = 0; i < 5; i++) B.box(0.025, 0.36, 0.025, M.iron || M.slit, 0.29 + i * 0.105, 0.98, 0.5 - T / 2 + 0.04);
+    B.box(0.24, 0.42, 0.02, team.cloth, 0.5, 1.05, 0.5 + (T + 0.16) / 2 + 0.012);
+    B.box(0.24, 0.04, 0.03, M.gold || team.cloth, 0.5, 1.47, 0.5 + (T + 0.16) / 2 + 0.012);
+    leaf(0.25, 1, 0.25, 0.92, 'planks');
+    leaf(0.75, -1, 0.25, 0.92, 'planks');
+  }
+  pivot.add(B.build());
+  root.userData = { anim: { banners: [], doors } };
+  return root;
+}
+
 // échafaudage de chantier
 export function scaffoldModel(s, M) {
   const B = new Builder(M);
@@ -674,525 +758,6 @@ export function scaffoldModel(s, M) {
   logPile(B, M, 0.35, s - 0.1, 4);
   return B.build();
 }
-
-// ------------------------------------------------------------------ unités : pièces animables
-// géométries partagées (taille unitaire), mises à l'échelle par instance
-export function unitGeometries() {
-  const cap = new THREE.CapsuleGeometry(0.5, 1, 4, 10); // hauteur totale 2
-  const sph = new THREE.SphereGeometry(0.5, 16, 12);
-  const hemi = new THREE.SphereGeometry(0.5, 16, 8, 0, Math.PI * 2, 0, Math.PI / 2);
-  const cyl = new THREE.CylinderGeometry(0.5, 0.5, 1, 12);
-  const taper = new THREE.CylinderGeometry(0.42, 0.5, 1, 12);
-  const cone = new THREE.ConeGeometry(0.5, 1, 14);
-  const box = new THREE.BoxGeometry(1, 1, 1);
-  const bow = new THREE.TorusGeometry(0.5, 0.04, 5, 16, Math.PI * 0.9);
-  const disc = new THREE.CylinderGeometry(0.5, 0.5, 1, 18);
-  const kite = (() => {
-    const sh = new THREE.Shape();
-    sh.moveTo(-0.5, 0.5); sh.lineTo(0.5, 0.5); sh.quadraticCurveTo(0.5, -0.1, 0, -0.6); sh.quadraticCurveTo(-0.5, -0.1, -0.5, 0.5);
-    const g = new THREE.ExtrudeGeometry(sh, { depth: 0.12, bevelEnabled: true, bevelSize: 0.04, bevelThickness: 0.04, bevelSegments: 1 });
-    g.translate(0, 0, -0.06);
-    return g;
-  })();
-  const blade = (() => { const g = new THREE.BoxGeometry(1, 1, 1); return g; })();
-  const wool = displaced(new THREE.IcosahedronGeometry(0.5, 2), 0.13, 77, 9);
-  const dodec = new THREE.DodecahedronGeometry(0.5, 0);
-  const ring = new THREE.TorusGeometry(0.5, 0.14, 6, 20);
-  const hook = new THREE.TorusGeometry(0.5, 0.06, 5, 12, Math.PI * 0.6);
-  const wheel = new THREE.TorusGeometry(0.5, 0.08, 6, 16);
-  return { cap, sph, hemi, cyl, taper, cone, box, bow, disc, kite, blade, wool, dodec, ring, hook, wheel };
-}
-
-// Couleurs
-const SKIN = [0xe2b48c, 0xc89870, 0xf0c8a0, 0xa87858];
-export const CIV_SKINS = {
-  francs: SKIN, romains: [0xd8a880, 0xc89870, 0xe0b490, 0xb88860], egyptiens: [0xb07850, 0x9a6844, 0xa87048, 0x8a5a38],
-  incas: [0xa87048, 0x986040, 0xb07a50, 0x8a5838], japonais: [0xe8c8a0, 0xdcb890, 0xf0d2aa, 0xd0a880], vikings: [0xf0d0b8, 0xe8c4a8, 0xf4dac4, 0xe0b898],
-};
-const C = {
-  tunic: 0x8a6a45, brown: 0x5a3d26, leather: 0x6b4a2e, metal: 0xb8bec6, darkmetal: 0x6e747c, wood: 0x7a5232,
-  straw: 0xd8b860, boot: 0x3a2a1c, rope: 0x8a7a5a, gold: 0xe8c050, white: 0xeeeeea, horseB: 0x6b4426, horseD: 0x3a2618,
-  horseW: 0xe8e2d6, hair: 0x4a3020, iron: 0x3a3a40,
-};
-
-/*
- * Description d'une pièce : { g, m, c, b, p, r, s }
- *  g : géométrie, m : matériau (cloth|skin|metal|leather|wood|gold), c : couleur (nombre, 'team', 'teamDk', 'skin')
- *  b : os (root|body|head|legL|legR|armL|armR|tool|shield|back|hbody|hhead|hlegFL|hlegFR|hlegBL|hlegBR|tail|arm)
- *  p : position locale, r : rotation (euler), s : échelle
- */
-const P = (g, m, c, b, p, s, r = [0, 0, 0]) => ({ g, m, c, b, p, s, r });
-
-function humanBase(opt) {
-  const parts = [];
-  const torsoC = opt.torso ?? 'team';
-  // jambes
-  for (const [b, x] of [['legL', -0.075], ['legR', 0.075]]) {
-    parts.push(P('cap', 'cloth', opt.legs ?? C.brown, b, [0, -0.2, 0], [0.12, 0.2, 0.12]));
-    parts.push(P('box', 'leather', C.boot, b, [0, -0.42, 0.025], [0.11, 0.08, 0.17]));
-    void x;
-  }
-  // torse
-  parts.push(P('taper', opt.torsoMat ?? 'cloth', torsoC, 'body', [0, 0.18, 0], [0.32, 0.38, 0.22]));
-  parts.push(P('cyl', 'leather', C.leather, 'body', [0, 0.02, 0], [0.33, 0.05, 0.23]));
-  if (opt.skirt !== false) parts.push(P('taper', opt.torsoMat ?? 'cloth', torsoC, 'body', [0, -0.06, 0], [0.34, 0.16, 0.25], [Math.PI, 0, 0]));
-  // tête
-  parts.push(P('sph', 'skin', 'skin', 'head', [0, 0.1, 0], [0.2, 0.22, 0.2]));
-  parts.push(P('sph', 'skin', 'skin', 'head', [0, 0.08, 0.1], [0.04, 0.05, 0.04]));
-  // bras
-  for (const b of ['armL', 'armR']) {
-    parts.push(P('cap', opt.torsoMat ?? 'cloth', opt.sleeve ?? torsoC, b, [0, -0.14, 0], [0.09, 0.16, 0.09]));
-    parts.push(P('sph', 'skin', 'skin', b, [0, -0.31, 0], [0.075, 0.075, 0.075]));
-  }
-  return parts;
-}
-
-export function unitParts(type, civ = 'francs') {
-  const parts = [];
-  const add = (...a) => parts.push(...a);
-  const CV = civ !== 'francs' ? CIV_GEAR[civ] : null;
-  const helmet = (style = 'cap') => {
-    if (CV) return CV.helmet(style, add, type);
-    if (style === 'cap') add(P('hemi', 'metal', C.metal, 'head', [0, 0.13, 0], [0.23, 0.22, 0.23]));
-    if (style === 'nasal') { add(P('hemi', 'metal', C.metal, 'head', [0, 0.13, 0], [0.23, 0.26, 0.23])); add(P('box', 'metal', C.metal, 'head', [0, 0.1, 0.11], [0.025, 0.1, 0.02])); }
-    if (style === 'great') { add(P('cyl', 'metal', C.metal, 'head', [0, 0.12, 0], [0.24, 0.26, 0.24])); add(P('box', 'metal', C.iron, 'head', [0, 0.13, 0.12], [0.16, 0.025, 0.02])); }
-    if (style === 'kettle') { add(P('hemi', 'metal', C.darkmetal, 'head', [0, 0.14, 0], [0.22, 0.2, 0.22])); add(P('disc', 'metal', C.darkmetal, 'head', [0, 0.14, 0], [0.38, 0.015, 0.38])); }
-    if (style === 'hood') add(P('cone', 'cloth', 'teamDk', 'head', [0, 0.2, -0.02], [0.25, 0.28, 0.25]));
-    if (style === 'straw') { add(P('disc', 'cloth', C.straw, 'head', [0, 0.17, 0], [0.42, 0.02, 0.42])); add(P('cone', 'cloth', C.straw, 'head', [0, 0.24, 0], [0.22, 0.14, 0.22])); }
-    if (style === 'hair') add(P('hemi', 'cloth', C.hair, 'head', [0, 0.12, -0.01], [0.215, 0.18, 0.215]));
-  };
-  const plume = (c = 'team') => add(P('cone', 'cloth', c, 'head', [0, 0.36, -0.04], [0.06, 0.18, 0.12], [-0.4, 0, 0]));
-  const sword = (len = 0.38) => {
-    if (CV && CV.sword) return CV.sword(len, add, type); add(P('blade', 'metal', C.metal, 'tool', [0, len / 2 + 0.05, 0], [0.035, len, 0.012])); add(P('box', 'metal', C.gold, 'tool', [0, 0.05, 0], [0.12, 0.02, 0.03])); add(P('cyl', 'leather', C.leather, 'tool', [0, -0.01, 0], [0.025, 0.1, 0.025])); };
-  const roundShield = (c = 'team') => {
-    if (CV && CV.shield) return CV.shield(c, add, type, 'round'); add(P('disc', 'wood', c, 'shield', [0, 0, 0], [0.26, 0.03, 0.26], [Math.PI / 2, 0, 0])); add(P('sph', 'metal', C.metal, 'shield', [0, 0, 0.02], [0.06, 0.06, 0.04])); };
-  const kiteShield = (c = 'team') => CV && CV.shield ? CV.shield(c, add, type, 'kite') : add(P('kite', 'wood', c, 'shield', [0, -0.02, 0], [0.24, 0.34, 0.25]));
-  const spear = (len = 1.25, tip = 0.1) => { add(P('cyl', 'wood', C.wood, 'tool', [0, 0.35, 0], [0.025, len, 0.025])); add(P('cone', 'metal', C.metal, 'tool', [0, 0.35 + len / 2 + tip / 2, 0], [0.045, tip, 0.03])); };
-
-  const hb = (o) => (CV && CV.body ? CV.body(o, type) : humanBase(o));
-  switch (type) {
-    case 'villager':
-      add(...hb({ torso: C.tunic, legs: C.brown }));
-      add(P('box', 'cloth', 'team', 'body', [0, 0.2, 0], [0.335, 0.05, 0.235], [0, 0, 0.6]));
-      helmet('straw');
-      // outils (affichés selon l'activité via le canal « tool »)
-      add({ ...P('cyl', 'wood', C.wood, 'tool', [0, 0.12, 0], [0.025, 0.42, 0.025]), tool: 'axe' });
-      add({ ...P('box', 'metal', C.metal, 'tool', [0.05, 0.3, 0], [0.1, 0.08, 0.02]), tool: 'axe' });
-      add({ ...P('cyl', 'wood', C.wood, 'tool', [0, 0.12, 0], [0.025, 0.42, 0.025]), tool: 'pick' });
-      add({ ...P('box', 'metal', C.darkmetal, 'tool', [0, 0.32, 0], [0.26, 0.035, 0.03], [0, 0, 0.15]), tool: 'pick' });
-      add({ ...P('cyl', 'wood', C.wood, 'tool', [0, 0.08, 0], [0.025, 0.3, 0.025]), tool: 'hammer' });
-      add({ ...P('box', 'metal', C.darkmetal, 'tool', [0, 0.23, 0], [0.12, 0.06, 0.06]), tool: 'hammer' });
-      add({ ...P('cyl', 'wood', C.wood, 'tool', [0, 0.18, 0], [0.022, 0.6, 0.022]), tool: 'hoe' });
-      add({ ...P('box', 'metal', C.darkmetal, 'tool', [0.04, 0.47, 0], [0.1, 0.03, 0.03]), tool: 'hoe' });
-      add({ ...P('cyl', 'wood', C.straw, 'tool', [0, -0.08, 0.05], [0.18, 0.12, 0.18]), tool: 'basket' });
-      // chargement porté
-      add({ ...P('cyl', 'wood', C.wood, 'back', [0, 0.05, -0.16], [0.08, 0.36, 0.08], [0, 0, Math.PI / 2]), carry: 'wood' });
-      add({ ...P('cyl', 'wood', C.wood, 'back', [0, 0.13, -0.16], [0.08, 0.32, 0.08], [0, 0, Math.PI / 2]), carry: 'wood' });
-      add({ ...P('sph', 'gold', C.gold, 'back', [0, 0.06, -0.17], [0.16, 0.14, 0.14]), carry: 'gold' });
-      add({ ...P('sph', 'wood', 0x9a9a9a, 'back', [0, 0.06, -0.17], [0.17, 0.14, 0.15]), carry: 'stone' });
-      add({ ...P('sph', 'cloth', 0xc04a36, 'back', [0, 0.06, -0.17], [0.16, 0.14, 0.14]), carry: 'food' });
-      break;
-    case 'militia':
-      add(...hb({ torso: 'team', torsoMat: 'cloth' }));
-      add(P('taper', 'leather', C.leather, 'body', [0, 0.2, 0], [0.335, 0.3, 0.235]));
-      helmet('cap'); sword(0.34); roundShield();
-      break;
-    case 'spearman':
-      add(...hb({ torso: 'team' }));
-      helmet('cap'); spear(1.3, 0.12); roundShield('teamDk');
-      break;
-    case 'swordsman':
-      add(...hb({ torso: C.metal, torsoMat: 'metal', sleeve: C.metal }));
-      add(P('box', 'cloth', 'team', 'body', [0, 0.12, 0.08], [0.26, 0.42, 0.1]));
-      helmet('nasal'); sword(0.42); kiteShield();
-      break;
-    case 'champion':
-      add(...hb({ torso: C.metal, torsoMat: 'metal', sleeve: C.metal, legs: C.darkmetal }));
-      add(P('box', 'cloth', 'team', 'body', [0, 0.1, 0.09], [0.24, 0.48, 0.08]));
-      add(P('sph', 'metal', C.metal, 'body', [-0.17, 0.33, 0], [0.13, 0.1, 0.13])); add(P('sph', 'metal', C.metal, 'body', [0.17, 0.33, 0], [0.13, 0.1, 0.13]));
-      helmet('great'); plume(); sword(0.55); kiteShield();
-      break;
-    case 'royal_guard':
-      add(...hb({ torso: C.metal, torsoMat: 'metal', sleeve: C.metal, legs: C.darkmetal }));
-      add(P('box', 'cloth', 'team', 'back', [0, 0.05, -0.12], [0.34, 0.62, 0.02], [0.12, 0, 0]));
-      add(P('box', 'cloth', C.gold, 'body', [0, 0.18, 0.12], [0.08, 0.08, 0.02]));
-      helmet('nasal'); add(P('cyl', 'gold', C.gold, 'head', [0, 0.14, 0], [0.235, 0.035, 0.235])); plume(C.gold);
-      add(P('cyl', 'wood', C.wood, 'tool', [0, 0.35, 0], [0.025, 1.35, 0.025]));
-      add(P('box', 'metal', C.metal, 'tool', [0.06, 0.95, 0], [0.14, 0.16, 0.015]));
-      add(P('cone', 'metal', C.metal, 'tool', [0, 1.1, 0], [0.04, 0.14, 0.03]));
-      break;
-    case 'archer':
-      add(...hb({ torso: 'team', legs: C.brown }));
-      helmet('hood');
-      add(P('bow', 'wood', C.wood, 'shield', [0, 0, 0.02], [0.75, 0.75, 0.75], [0, Math.PI / 2, -Math.PI * 0.45]));
-      add(P('cyl', 'leather', C.leather, 'back', [0.08, 0.15, -0.15], [0.09, 0.34, 0.09], [0.2, 0, 0.2]));
-      add(P('cone', 'cloth', C.white, 'back', [0.1, 0.36, -0.13], [0.06, 0.06, 0.06]));
-      break;
-    case 'crossbowman':
-      add(...hb({ torso: 'team' }));
-      add(P('taper', 'cloth', 0xc8b890, 'body', [0, 0.19, 0], [0.335, 0.3, 0.235]));
-      helmet('kettle');
-      add(P('box', 'wood', C.wood, 'tool', [0, 0.18, 0.02], [0.05, 0.4, 0.05]));
-      add(P('bow', 'metal', C.darkmetal, 'tool', [0, 0.36, 0.02], [0.32, 0.32, 0.32], [0, 0, Math.PI * 0.05]));
-      add(P('cyl', 'leather', C.leather, 'back', [0.1, 0.0, -0.14], [0.08, 0.25, 0.08]));
-      break;
-    case 'skirmisher':
-      add(...hb({ torso: 'team', legs: C.leather }));
-      helmet('hair');
-      add(P('cyl', 'wood', C.wood, 'tool', [0, 0.3, 0], [0.02, 0.85, 0.02])); add(P('cone', 'metal', C.metal, 'tool', [0, 0.76, 0], [0.035, 0.08, 0.025]));
-      add(P('disc', 'wood', 'teamDk', 'shield', [0, 0, 0], [0.18, 0.03, 0.18], [Math.PI / 2, 0, 0]));
-      for (let i = 0; i < 3; i++) add(P('cyl', 'wood', C.wood, 'back', [-0.05 + i * 0.05, 0.15, -0.14], [0.018, 0.8, 0.018], [0.15, 0, 0.1]));
-      break;
-    case 'scout':
-    case 'knight':
-    case 'paladin':
-    case 'cuirassier':
-    case 'dragoon': {
-      const coat = type === 'scout' || type === 'dragoon' ? C.horseB : type === 'paladin' ? C.horseW : C.horseD;
-      // cheval
-      add(P('cap', 'leather', coat, 'hbody', [0, 0, 0], [0.4, 0.42, 0.4], [Math.PI / 2, 0, 0]));
-      add(P('cap', 'leather', coat, 'hhead', [0, 0.16, 0.02], [0.17, 0.2, 0.2], [0.5, 0, 0]));
-      add(P('cap', 'leather', coat, 'hhead', [0, 0.32, 0.16], [0.14, 0.14, 0.24], [1.3, 0, 0]));
-      add(P('cone', 'leather', coat, 'hhead', [-0.05, 0.43, 0.08], [0.04, 0.08, 0.04])); add(P('cone', 'leather', coat, 'hhead', [0.05, 0.43, 0.08], [0.04, 0.08, 0.04]));
-      add(P('box', 'cloth', C.hair, 'hhead', [0, 0.3, -0.03], [0.04, 0.3, 0.1], [0.5, 0, 0]));
-      for (const b of ['hlegFL', 'hlegFR', 'hlegBL', 'hlegBR']) {
-        add(P('cap', 'leather', coat, b, [0, -0.2, 0], [0.1, 0.22, 0.1]));
-        add(P('cyl', 'leather', C.horseD, b, [0, -0.43, 0], [0.09, 0.06, 0.09]));
-      }
-      add(P('cone', 'cloth', C.hair, 'tail', [0, -0.18, 0], [0.09, 0.4, 0.07], [Math.PI, 0, 0]));
-      add(P('box', 'leather', C.leather, 'hbody', [0, 0.2, -0.02], [0.32, 0.06, 0.3]));
-      if (type === 'knight' || type === 'paladin') {
-        // caparaçon aux couleurs du joueur
-        add(P('box', 'cloth', 'team', 'hbody', [0, 0.02, 0], [0.43, 0.32, 0.86]));
-        add(P('box', 'cloth', C.gold, 'hbody', [0, -0.14, 0], [0.435, 0.04, 0.865]));
-      }
-      // cavalier
-      const armor = type === 'scout' ? C.leather : type === 'dragoon' ? 'team' : C.metal;
-      const mat = type === 'scout' ? 'leather' : type === 'dragoon' ? 'cloth' : 'metal';
-      add(P('taper', mat, armor, 'body', [0, 0.18, 0], [0.3, 0.36, 0.22]));
-      if (type === 'knight' || type === 'paladin' || type === 'cuirassier') add(P('box', 'cloth', 'team', 'body', [0, 0.16, 0.08], [0.24, 0.36, 0.08]));
-      else add(P('box', 'cloth', 'team', 'body', [0, 0.2, 0], [0.31, 0.06, 0.23], [0, 0, 0.6]));
-      add(P('sph', 'skin', 'skin', 'head', [0, 0.1, 0], [0.2, 0.22, 0.2]));
-      for (const [b, x] of [['legL', -1], ['legR', 1]]) add(P('cap', mat, armor, b, [x * 0.12, -0.12, 0.08], [0.11, 0.17, 0.11], [-1.1, 0, x * 0.35]));
-      for (const b of ['armL', 'armR']) { add(P('cap', mat, armor, b, [0, -0.14, 0], [0.085, 0.16, 0.085])); add(P('sph', 'skin', 'skin', b, [0, -0.31, 0], [0.07, 0.07, 0.07])); }
-      if (type === 'scout') { helmet('hair'); sword(0.34); }
-      else if (type === 'cuirassier') {
-        add(P('hemi', 'metal', C.metal, 'head', [0, 0.14, 0], [0.24, 0.24, 0.24])); add(P('box', 'cloth', 0x202020, 'head', [0, 0.28, -0.04], [0.04, 0.12, 0.26]));
-        add(P('blade', 'metal', C.metal, 'tool', [0, 0.32, 0], [0.03, 0.55, 0.01])); add(P('box', 'gold', C.gold, 'tool', [0, 0.05, 0], [0.1, 0.02, 0.03]));
-      } else if (type === 'dragoon') {
-        add(P('box', 'cloth', 0x1c1c1c, 'head', [0, 0.2, 0], [0.36, 0.12, 0.14])); add(P('cone', 'cloth', 'team', 'head', [0, 0.3, 0], [0.05, 0.1, 0.05]));
-        add(P('box', 'cloth', 0xf0f0f0, 'body', [0, 0.18, 0.11], [0.05, 0.38, 0.02], [0, 0, 0.6]));
-        add(P('cyl', 'wood', C.wood, 'tool', [0, 0.3, 0], [0.03, 0.62, 0.03])); add(P('cyl', 'metal', C.iron, 'tool', [0, 0.52, 0.015], [0.02, 0.5, 0.02]));
-      } else {
-        helmet(type === 'paladin' ? 'great' : 'nasal');
-        if (type === 'paladin') plume(C.gold);
-        add(P('cyl', 'wood', 'team', 'tool', [0, 0.45, 0], [0.035, 1.7, 0.035]));
-        add(P('cone', 'metal', C.metal, 'tool', [0, 1.35, 0], [0.05, 0.14, 0.05]));
-        kiteShield();
-      }
-      break;
-    }
-    case 'legionary':
-      add(...humanBase({ torso: 'team', legs: C.brown }));
-      for (let i = 0; i < 4; i++) add(P('taper', 'metal', C.metal, 'body', [0, 0.06 + i * 0.075, 0], [0.335, 0.06, 0.24]));
-      add(P('sph', 'metal', C.metal, 'body', [-0.17, 0.33, 0], [0.12, 0.08, 0.12])); add(P('sph', 'metal', C.metal, 'body', [0.17, 0.33, 0], [0.12, 0.08, 0.12]));
-      CIV_GEAR.romains.helmet('nasal', add, type);
-      CIV_GEAR.romains.shield('team', add, type, 'kite');
-      CIV_GEAR.romains.sword(0.3, add, type);
-      break;
-    case 'samurai':
-      add(...CIV_GEAR.japonais.body({ torso: 'team' }, 'champion'));
-      CIV_GEAR.japonais.helmet('great', add, type);
-      add(P('blade', 'metal', C.metal, 'tool', [0, 0.4, 0.02], [0.03, 0.66, 0.012], [0.12, 0, 0]));
-      add(P('cyl', 'cloth', 0x202020, 'tool', [0, 0.02, 0], [0.03, 0.18, 0.03])); add(P('disc', 'gold', C.gold, 'tool', [0, 0.1, 0], [0.07, 0.015, 0.07]));
-      add(P('cyl', 'cloth', 0x2a2a2a, 'body', [0.16, -0.02, -0.05], [0.025, 0.55, 0.025], [0.9, 0, 0.3]));
-      break;
-    case 'berserker':
-      add(...humanBase({ torso: 0x6b4a2e, torsoMat: 'leather', sleeve: 'skin', legs: C.brown }));
-      add(P('box', 'cloth', 'team', 'body', [0, 0.02, 0.01], [0.35, 0.08, 0.25]));
-      add(P('hemi', 'leather', 0x5a3e28, 'head', [0, 0.14, -0.02], [0.26, 0.24, 0.27]));
-      add(P('cone', 'cloth', 0x8a5a2a, 'head', [0, -0.02, 0.09], [0.12, 0.16, 0.08], [Math.PI, 0, 0]));
-      add(P('box', 'leather', 0x4a3220, 'back', [0, -0.05, -0.12], [0.36, 0.55, 0.03], [0.15, 0, 0]));
-      for (const b of ['tool']) { add(P('cyl', 'wood', C.wood, b, [0, 0.15, 0], [0.03, 0.55, 0.03])); add(P('box', 'metal', C.metal, b, [0.07, 0.38, 0], [0.16, 0.14, 0.02])); }
-      break;
-    case 'slinger':
-      add(...CIV_GEAR.incas.body({ torso: 'team', legs: C.brown }, type));
-      CIV_GEAR.incas.helmet('hood', add, type);
-      add(P('cyl', 'cloth', C.rope, 'tool', [0, 0.18, 0], [0.012, 0.36, 0.012]));
-      add(P('sph', 'leather', C.leather, 'tool', [0, 0.38, 0], [0.06, 0.05, 0.06]));
-      add(P('cyl', 'leather', C.leather, 'back', [0.1, -0.02, -0.14], [0.12, 0.16, 0.12]));
-      break;
-    case 'chariot': {
-      const coat = C.horseB;
-      add(P('cap', 'leather', coat, 'hbody', [0, 0, 0.1], [0.38, 0.4, 0.38], [Math.PI / 2, 0, 0]));
-      add(P('cap', 'leather', coat, 'hhead', [0, 0.16, 0.02], [0.17, 0.2, 0.2], [0.5, 0, 0]));
-      add(P('cap', 'leather', coat, 'hhead', [0, 0.32, 0.16], [0.14, 0.14, 0.24], [1.3, 0, 0]));
-      add(P('cone', 'cloth', 'team', 'hhead', [0, 0.45, 0.06], [0.06, 0.16, 0.06]));
-      for (const b of ['hlegFL', 'hlegFR', 'hlegBL', 'hlegBR']) { add(P('cap', 'leather', coat, b, [0, -0.2, 0], [0.1, 0.22, 0.1])); add(P('cyl', 'leather', C.horseD, b, [0, -0.43, 0], [0.09, 0.06, 0.09])); }
-      add(P('cone', 'cloth', C.hair, 'tail', [0, -0.18, 0], [0.09, 0.4, 0.07], [Math.PI, 0, 0]));
-      add(P('box', 'cloth', 'team', 'hbody', [0, 0.05, 0.1], [0.42, 0.2, 0.6]));
-      // caisse du char et roues
-      add(P('box', 'wood', 0xa8783a, 'hbody', [0, -0.05, -0.72], [0.62, 0.3, 0.4]));
-      add(P('box', 'gold', C.gold, 'hbody', [0, 0.1, -0.53], [0.64, 0.05, 0.03]));
-      add(P('cyl', 'wood', C.wood, 'hbody', [0, -0.12, -0.3], [0.04, 0.6, 0.04], [Math.PI / 2, 0, 0]));
-      for (const x of [-0.36, 0.36]) { add(P('wheel', 'wood', 0x5a3d22, 'hbody', [x, -0.26, -0.75], [0.56, 0.56, 0.56], [0, Math.PI / 2, 0])); add(P('cyl', 'gold', C.gold, 'hbody', [x, -0.26, -0.75], [0.06, 0.06, 0.06], [0, 0, Math.PI / 2])); }
-      // archer debout
-      add(P('taper', 'cloth', 0xf0ead8, 'body', [0, 0.18, 0], [0.3, 0.36, 0.22]));
-      add(P('ring', 'gold', C.gold, 'body', [0, 0.34, 0], [0.34, 0.34, 0.2], [Math.PI / 2, 0, 0]));
-      add(P('sph', 'skin', 'skin', 'head', [0, 0.1, 0], [0.2, 0.22, 0.2]));
-      CIV_GEAR.egyptiens.helmet('cap', add, type);
-      for (const b of ['armL', 'armR']) { add(P('cap', 'skin', 'skin', b, [0, -0.14, 0], [0.085, 0.16, 0.085])); }
-      for (const b of ['legL', 'legR']) add(P('cap', 'skin', 'skin', b, [b === 'legL' ? -0.08 : 0.08, -0.2, 0], [0.11, 0.2, 0.11]));
-      add(P('bow', 'wood', C.wood, 'shield', [0, 0, 0.02], [0.75, 0.75, 0.75], [0, Math.PI / 2, -Math.PI * 0.45]));
-      break;
-    }
-    // ---------------------------------------------------------------- âges avancés
-    case 'musketeer':
-      add(...humanBase({ torso: 'team', legs: C.brown }));
-      add(P('box', 'leather', C.leather, 'body', [0, 0.18, 0.11], [0.05, 0.4, 0.02], [0, 0, 0.6]));
-      add(P('disc', 'cloth', 0x2a2420, 'head', [0, 0.17, 0], [0.44, 0.025, 0.44])); add(P('hemi', 'cloth', 0x2a2420, 'head', [0, 0.17, 0], [0.24, 0.18, 0.24]));
-      add(P('cone', 'cloth', 'team', 'head', [0.1, 0.27, -0.05], [0.04, 0.2, 0.06], [-0.5, 0, -0.4]));
-      add(P('cyl', 'wood', C.wood, 'tool', [0, 0.28, 0], [0.032, 0.62, 0.032])); add(P('cyl', 'metal', C.iron, 'tool', [0, 0.52, 0.018], [0.02, 0.62, 0.02]));
-      break;
-    case 'fusilier':
-      add(...humanBase({ torso: 'team', legs: 0xe8e4da }));
-      add(P('box', 'cloth', 0xf4f4f0, 'body', [0, 0.18, 0.115], [0.05, 0.42, 0.02], [0, 0, 0.6])); add(P('box', 'cloth', 0xf4f4f0, 'body', [0, 0.18, 0.12], [0.05, 0.42, 0.02], [0, 0, -0.6]));
-      add(P('cyl', 'cloth', 0x1c1c1c, 'head', [0, 0.24, 0], [0.21, 0.24, 0.21])); add(P('box', 'leather', 0x101010, 'head', [0, 0.13, 0.1], [0.16, 0.02, 0.08])); add(P('sph', 'cloth', 'team', 'head', [0, 0.38, 0.06], [0.06, 0.08, 0.06]));
-      add(P('cyl', 'wood', C.wood, 'tool', [0, 0.28, 0], [0.03, 0.6, 0.03])); add(P('cyl', 'metal', C.iron, 'tool', [0, 0.52, 0.016], [0.018, 0.55, 0.018])); add(P('cone', 'metal', C.metal, 'tool', [0, 0.86, 0.016], [0.025, 0.2, 0.012]));
-      break;
-    case 'soldier':
-    case 'machine_gunner': {
-      const olive = 0x56603a;
-      add(...humanBase({ torso: olive, sleeve: olive, legs: 0x4a5232 }));
-      add(P('cyl', 'cloth', 'team', 'armL', [0, -0.08, 0], [0.1, 0.05, 0.1]));
-      add(P('hemi', 'metal', 0x4a5530, 'head', [0, 0.12, 0], [0.26, 0.24, 0.27])); add(P('disc', 'metal', 0x4a5530, 'head', [0, 0.12, 0], [0.3, 0.015, 0.3]));
-      add(P('box', 'cloth', 0x5a5230, 'back', [0, 0.04, -0.14], [0.24, 0.26, 0.1]));
-      add(P('box', 'cloth', 0x3a3a2a, 'body', [0, 0.05, 0.1], [0.3, 0.08, 0.04]));
-      if (type === 'soldier') { add(P('box', 'metal', 0x262626, 'tool', [0, 0.3, 0], [0.04, 0.55, 0.06])); add(P('box', 'metal', 0x262626, 'tool', [0, 0.28, 0.06], [0.03, 0.08, 0.06])); }
-      else {
-        add(P('box', 'metal', 0x222222, 'tool', [0, 0.3, 0], [0.07, 0.55, 0.09])); add(P('cyl', 'metal', 0x2a2a2a, 'tool', [0, 0.68, 0], [0.04, 0.3, 0.04]));
-        add(P('box', 'gold', 0xb08a3a, 'tool', [0.06, 0.25, 0], [0.04, 0.2, 0.03])); add(P('box', 'metal', 0x2a2a2a, 'tool', [0, 0.72, 0.06], [0.12, 0.02, 0.02], [0.4, 0, 0]));
-      }
-      break;
-    }
-    case 'exo_soldier': {
-      const white = 0xdfe4ea;
-      add(...humanBase({ torso: white, torsoMat: 'metal', sleeve: white, legs: 0x8a9098 }));
-      add(P('box', 'metal', white, 'body', [0, 0.2, 0.02], [0.4, 0.3, 0.3])); add(P('box', 'glow', 'team', 'body', [0, 0.22, 0.17], [0.16, 0.05, 0.02]));
-      add(P('sph', 'metal', white, 'body', [-0.21, 0.34, 0], [0.16, 0.12, 0.16])); add(P('sph', 'metal', white, 'body', [0.21, 0.34, 0], [0.16, 0.12, 0.16]));
-      add(P('sph', 'metal', white, 'head', [0, 0.11, 0], [0.27, 0.27, 0.27])); add(P('box', 'glow', 'team', 'head', [0, 0.12, 0.12], [0.2, 0.06, 0.04]));
-      add(P('box', 'metal', 0x6a7078, 'back', [0, 0.05, -0.17], [0.28, 0.32, 0.1])); add(P('cyl', 'glow', 'team', 'back', [-0.08, 0.05, -0.23], [0.04, 0.2, 0.04])); add(P('cyl', 'glow', 'team', 'back', [0.08, 0.05, -0.23], [0.04, 0.2, 0.04]));
-      add(P('box', 'metal', white, 'tool', [0, 0.32, 0], [0.07, 0.55, 0.09])); add(P('cyl', 'glow', 'team', 'tool', [0, 0.62, 0], [0.03, 0.12, 0.03]));
-      break;
-    }
-    case 'robot': {
-      const g = 0x7a828c, d = 0x3a4048;
-      for (const b of ['legL', 'legR']) { add(P('box', 'metal', g, b, [0, -0.18, 0.02], [0.17, 0.4, 0.2])); add(P('box', 'metal', d, b, [0, -0.43, 0.05], [0.2, 0.08, 0.32])); }
-      add(P('box', 'metal', g, 'body', [0, 0.2, 0], [0.5, 0.4, 0.36])); add(P('box', 'metal', d, 'body', [0, -0.02, 0], [0.36, 0.12, 0.28]));
-      add(P('box', 'cloth', 'team', 'body', [0, 0.24, 0.185], [0.3, 0.08, 0.02])); add(P('cyl', 'glow', 'team', 'body', [0, 0.12, 0.18], [0.1, 0.03, 0.1], [Math.PI / 2, 0, 0]));
-      add(P('box', 'metal', d, 'head', [0, 0.06, 0], [0.22, 0.14, 0.2])); add(P('box', 'glow', 'team', 'head', [0, 0.07, 0.1], [0.16, 0.04, 0.02]));
-      add(P('cyl', 'metal', d, 'head', [0.08, 0.2, -0.05], [0.015, 0.2, 0.015]));
-      for (const b of ['armL', 'armR']) { add(P('box', 'metal', g, b, [0, -0.15, 0], [0.13, 0.32, 0.13])); add(P('sph', 'metal', d, b, [0, 0, 0], [0.16, 0.16, 0.16])); }
-      add(P('box', 'metal', d, 'tool', [0, 0.18, 0], [0.1, 0.42, 0.12])); add(P('cyl', 'glow', 'team', 'tool', [0, 0.42, 0], [0.05, 0.08, 0.05]));
-      add(P('box', 'metal', d, 'shield', [0, 0.1, 0], [0.12, 0.3, 0.12])); add(P('box', 'metal', g, 'shield', [0, 0.28, 0.02], [0.16, 0.12, 0.16]));
-      break;
-    }
-    case 'trebuchet':
-      for (const x of [-0.32, 0.32]) {
-        add(P('box', 'wood', C.wood, 'root', [x, 0.1, 0], [0.08, 0.08, 1.6]));
-        add(P('box', 'wood', C.wood, 'root', [x, 0.62, -0.25], [0.07, 1.1, 0.07], [-0.45, 0, 0])); add(P('box', 'wood', C.wood, 'root', [x, 0.62, 0.25], [0.07, 1.1, 0.07], [0.45, 0, 0]));
-      }
-      add(P('box', 'wood', C.wood, 'root', [0, 0.1, 0.7], [0.72, 0.08, 0.08])); add(P('box', 'wood', C.wood, 'root', [0, 0.1, -0.7], [0.72, 0.08, 0.08]));
-      add(P('cyl', 'wood', 0x5a3d22, 'root', [0, 1.12, 0], [0.06, 0.8, 0.06], [0, 0, Math.PI / 2]));
-      for (const [x, z] of [[-0.36, -0.6], [0.36, -0.6], [-0.36, 0.6], [0.36, 0.6]]) add(P('disc', 'wood', 0x4a3220, 'root', [x, 0.12, z], [0.24, 0.05, 0.24], [0, 0, Math.PI / 2]));
-      add(P('box', 'wood', 0x6b4a2a, 'tool', [0, 0, 0.45], [0.08, 0.08, 1.9]));
-      add(P('box', 'wood', 0x4a3a2a, 'tool', [0, -0.12, -0.5], [0.34, 0.3, 0.3]));
-      add(P('cyl', 'cloth', C.rope, 'tool', [0, -0.25, 1.38], [0.012, 0.5, 0.012]));
-      add(P('box', 'cloth', 'team', 'root', [0, 0.3, -0.75], [0.3, 0.18, 0.02]));
-      break;
-    case 'cannon':
-    case 'field_gun': {
-      const steel = type === 'cannon' ? 0xa07838 : 0x5a5e62;
-      add(P('box', 'wood', type === 'cannon' ? C.wood : 0x4a4e40, 'root', [0, 0.18, -0.35], [0.16, 0.1, 0.8], [0.25, 0, 0]));
-      for (const x of [-0.27, 0.27]) {
-        add(P('wheel', 'wood', type === 'cannon' ? 0x5a3d22 : 0x2a2a2a, 'root', [x, 0.27, 0.05], [0.5, 0.5, 0.5], [0, Math.PI / 2, 0]));
-        add(P('cyl', 'wood', 0x5a3d22, 'root', [x, 0.27, 0.05], [0.03, 0.46, 0.03])); add(P('cyl', 'wood', 0x5a3d22, 'root', [x, 0.27, 0.05], [0.03, 0.46, 0.03], [Math.PI / 2, 0, 0]));
-      }
-      add(P('cyl', 'metal', 0x3a3a3a, 'root', [0, 0.27, 0.05], [0.04, 0.6, 0.04], [0, 0, Math.PI / 2]));
-      add(P('cyl', 'metal', steel, 'tool', [0, 0, 0.2], [0.15, 0.85, 0.15], [Math.PI / 2, 0, 0]));
-      add(P('cyl', 'metal', steel, 'tool', [0, 0, 0.62], [0.18, 0.06, 0.18], [Math.PI / 2, 0, 0]));
-      if (type === 'field_gun') add(P('box', 'metal', 0x4a4e40, 'root', [0, 0.45, 0.32], [0.6, 0.4, 0.03]));
-      add(P('box', 'cloth', 'team', 'root', [0, 0.3, -0.65], [0.2, 0.12, 0.02]));
-      break;
-    }
-    case 'tank': {
-      const hull = 0x55603a;
-      add(P('box', 'metal', hull, 'root', [0, 0.32, 0], [0.82, 0.24, 1.3]));
-      add(P('box', 'metal', hull, 'root', [0, 0.32, 0.72], [0.78, 0.16, 0.2], [0.6, 0, 0]));
-      for (const x of [-0.46, 0.46]) {
-        add(P('box', 'metal', 0x26282a, 'root', [x, 0.2, 0], [0.2, 0.3, 1.45]));
-        for (let i = 0; i < 5; i++) add(P('cyl', 'metal', 0x3a3c3e, 'root', [x * 1.04, 0.15, -0.56 + i * 0.28], [0.17, 0.08, 0.17], [0, 0, Math.PI / 2]));
-      }
-      add(P('box', 'cloth', 'team', 'root', [0, 0.45, -0.2], [0.84, 0.03, 0.12]));
-      add(P('cyl', 'metal', hull, 'tool', [0, 0.1, 0], [0.55, 0.22, 0.6])); add(P('box', 'metal', hull, 'tool', [0, 0.1, -0.18], [0.4, 0.2, 0.3]));
-      add(P('cyl', 'metal', 0x3a3e30, 'tool', [0, 0.12, 0.6], [0.07, 0.75, 0.07], [Math.PI / 2, 0, 0]));
-      add(P('cyl', 'metal', 0x3a3e30, 'tool', [0, 0.12, 0.98], [0.1, 0.1, 0.1], [Math.PI / 2, 0, 0]));
-      add(P('cyl', 'metal', hull, 'tool', [0.12, 0.24, -0.05], [0.12, 0.05, 0.12]));
-      add(P('cyl', 'metal', 0x202020, 'tool', [-0.18, 0.5, -0.2], [0.008, 0.6, 0.008]));
-      add(P('box', 'cloth', 'team', 'tool', [0, 0.22, -0.32], [0.3, 0.02, 0.02]));
-      break;
-    }
-    case 'bomber': {
-      const body = 0x6a7268;
-      add(P('cap', 'metal', body, 'root', [0, 0, 0], [0.3, 0.75, 0.3], [Math.PI / 2, 0, 0]));
-      add(P('sph', 'gold', 0x9ac8e8, 'root', [0, 0.12, 0.38], [0.18, 0.12, 0.3]));
-      add(P('box', 'metal', body, 'root', [0, -0.02, 0.05], [2.4, 0.05, 0.42]));
-      add(P('box', 'cloth', 'team', 'root', [-0.95, 0.005, 0.05], [0.3, 0.06, 0.43])); add(P('box', 'cloth', 'team', 'root', [0.95, 0.005, 0.05], [0.3, 0.06, 0.43]));
-      add(P('box', 'metal', body, 'root', [0, 0.02, -0.68], [0.9, 0.04, 0.22])); add(P('box', 'metal', body, 'root', [0, 0.18, -0.7], [0.04, 0.34, 0.24]));
-      add(P('box', 'cloth', 'team', 'root', [0, 0.2, -0.7], [0.05, 0.16, 0.16]));
-      for (const x of [-0.6, 0.6]) { add(P('cap', 'metal', 0x4a4e4a, 'root', [x, -0.07, 0.2], [0.14, 0.24, 0.14], [Math.PI / 2, 0, 0])); add(P('box', 'metal', 0x202020, 'root', [x, -0.07, 0.48], [0.6, 0.04, 0.02])); }
-      add(P('cap', 'metal', 0x303030, 'root', [0, -0.2, 0.05], [0.1, 0.25, 0.1], [Math.PI / 2, 0, 0]));
-      add(P('box', 'metal', 0x202020, 'tool', [0, 0, 0], [0.6, 0.05, 0.02])); add(P('box', 'metal', 0x202020, 'tool', [0, 0, 0], [0.05, 0.6, 0.02]));
-      break;
-    }
-    case 'drone': {
-      add(P('box', 'metal', 0x2a2e34, 'root', [0, 0, 0], [0.3, 0.1, 0.38])); add(P('sph', 'glow', 'team', 'root', [0, -0.02, 0.2], [0.08, 0.06, 0.06]));
-      for (const [x, z] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) {
-        add(P('box', 'metal', 0x3a3e44, 'root', [x * 0.2, 0.02, z * 0.2], [0.05, 0.03, 0.34], [0, Math.atan2(x, z), 0]));
-        add(P('disc', 'cloth', 'team', 'root', [x * 0.32, 0.06, z * 0.32], [0.3, 0.01, 0.3]));
-        add(P('cyl', 'metal', 0x202020, 'root', [x * 0.32, 0.03, z * 0.32], [0.04, 0.06, 0.04]));
-      }
-      add(P('box', 'metal', 0x202428, 'tool', [0, -0.06, 0.05], [0.06, 0.06, 0.3])); add(P('cyl', 'glow', 'team', 'tool', [0, -0.06, 0.22], [0.025, 0.04, 0.025], [Math.PI / 2, 0, 0]));
-      break;
-    }
-    case 'ram':
-      add(P('box', 'wood', C.wood, 'root', [0, 0.32, 0], [0.6, 0.1, 1.2]));
-      for (const [x, z] of [[-0.3, -0.42], [0.3, -0.42], [-0.3, 0.42], [0.3, 0.42]]) add(P('disc', 'wood', 0x4a3220, 'root', [x, 0.2, z], [0.36, 0.06, 0.36], [0, 0, Math.PI / 2]));
-      for (const [x, z] of [[-0.25, -0.5], [0.25, -0.5], [-0.25, 0.5], [0.25, 0.5]]) add(P('box', 'wood', C.wood, 'root', [x, 0.6, z], [0.07, 0.55, 0.07]));
-      add(P('box', 'wood', 0x8a6038, 'root', [-0.2, 0.92, 0], [0.42, 0.05, 1.25], [0, 0, 0.75]));
-      add(P('box', 'wood', 0x8a6038, 'root', [0.2, 0.92, 0], [0.42, 0.05, 1.25], [0, 0, -0.75]));
-      add(P('cyl', 'wood', 0x6b4a2a, 'tool', [0, 0, 0], [0.16, 1.4, 0.16], [Math.PI / 2, 0, 0]));
-      add(P('cyl', 'metal', C.iron, 'tool', [0, 0, 0.72], [0.19, 0.14, 0.19], [Math.PI / 2, 0, 0]));
-      add(P('box', 'cloth', 'team', 'root', [0, 0.85, -0.62], [0.3, 0.2, 0.02]));
-      break;
-    case 'mangonel':
-      add(P('box', 'wood', C.wood, 'root', [-0.25, 0.22, 0], [0.08, 0.08, 1.0])); add(P('box', 'wood', C.wood, 'root', [0.25, 0.22, 0], [0.08, 0.08, 1.0]));
-      add(P('box', 'wood', C.wood, 'root', [0, 0.22, 0.4], [0.58, 0.07, 0.08])); add(P('box', 'wood', C.wood, 'root', [0, 0.22, -0.4], [0.58, 0.07, 0.08]));
-      for (const [x, z] of [[-0.3, -0.35], [0.3, -0.35], [-0.3, 0.35], [0.3, 0.35]]) add(P('disc', 'wood', 0x4a3220, 'root', [x, 0.16, z], [0.3, 0.05, 0.3], [0, 0, Math.PI / 2]));
-      add(P('box', 'wood', C.wood, 'root', [-0.2, 0.45, 0.05], [0.06, 0.5, 0.06], [-0.3, 0, 0])); add(P('box', 'wood', C.wood, 'root', [0.2, 0.45, 0.05], [0.06, 0.5, 0.06], [-0.3, 0, 0]));
-      add(P('box', 'wood', 0x6b4a2a, 'tool', [0, 0.38, 0], [0.07, 0.8, 0.07]));
-      add(P('hemi', 'wood', 0x5a3d22, 'tool', [0, 0.78, 0], [0.18, 0.1, 0.18], [Math.PI, 0, 0]));
-      add(P('sph', 'wood', 0x8a8a8a, 'tool', [0, 0.82, 0], [0.12, 0.12, 0.12]));
-      add(P('box', 'cloth', 'team', 'root', [0, 0.32, -0.42], [0.25, 0.14, 0.02]));
-      break;
-    case 'bombard':
-      add(P('box', 'wood', C.wood, 'root', [0, 0.25, -0.1], [0.4, 0.14, 0.9]));
-      for (const x of [-0.27, 0.27]) add(P('disc', 'wood', 0x4a3220, 'root', [x, 0.24, 0.12], [0.46, 0.05, 0.46], [0, 0, Math.PI / 2]));
-      add(P('cyl', 'metal', C.iron, 'tool', [0, 0, 0], [0.22, 0.95, 0.22], [Math.PI / 2, 0, 0]));
-      add(P('cyl', 'metal', 0x2a2a2e, 'tool', [0, 0, 0.47], [0.27, 0.1, 0.27], [Math.PI / 2, 0, 0]));
-      add(P('cyl', 'metal', C.gold, 'tool', [0, 0, -0.2], [0.24, 0.05, 0.24], [Math.PI / 2, 0, 0]));
-      add(P('box', 'cloth', 'team', 'root', [0, 0.42, -0.5], [0.25, 0.14, 0.02]));
-      break;
-    default:
-      add(...humanBase({}));
-  }
-  return parts;
-}
-
-export const SKIN_TONES = SKIN;
-
-// ------------------------------------------------------------------ équipements par civilisation
-const isMil = (t) => t !== 'villager';
-export const CIV_GEAR = {
-  romains: {
-    helmet(style, add, type) {
-      if (!isMil(type) || style === 'straw' || style === 'hair') { add(P('hemi', 'cloth', 0x3a2a1a, 'head', [0, 0.12, -0.01], [0.21, 0.16, 0.21])); return; }
-      add(P('hemi', 'metal', C.metal, 'head', [0, 0.13, 0], [0.235, 0.24, 0.235]));
-      add(P('box', 'metal', C.metal, 'head', [-0.1, 0.05, 0.04], [0.02, 0.1, 0.08])); add(P('box', 'metal', C.metal, 'head', [0.1, 0.05, 0.04], [0.02, 0.1, 0.08]));
-      add(P('box', 'cloth', style === 'great' ? C.gold : 0xb02a20, 'head', [0, 0.3, 0], [0.04, 0.1, 0.26]));
-    },
-    sword(len, add) { add(P('blade', 'metal', C.metal, 'tool', [0, Math.min(len, 0.32) / 2 + 0.05, 0], [0.045, Math.min(len, 0.32), 0.012])); add(P('sph', 'gold', C.gold, 'tool', [0, 0.04, 0], [0.06, 0.04, 0.05])); },
-    shield(c, add, type, kind) {
-      if (kind === 'round' && type === 'spearman') { add(P('disc', 'wood', c, 'shield', [0, 0, 0], [0.3, 0.03, 0.3], [Math.PI / 2, 0, 0])); return; }
-      add(P('box', 'wood', c, 'shield', [0, 0, 0.02], [0.3, 0.46, 0.05]));
-      add(P('box', 'gold', C.gold, 'shield', [0, 0, 0.05], [0.32, 0.02, 0.02])); add(P('sph', 'gold', C.gold, 'shield', [0, 0, 0.05], [0.07, 0.07, 0.04]));
-    },
-  },
-  egyptiens: {
-    helmet(style, add, type) {
-      if (!isMil(type)) { add(P('hemi', 'cloth', 0xf0ead8, 'head', [0, 0.11, -0.02], [0.23, 0.2, 0.24])); add(P('box', 'cloth', 0xf0ead8, 'head', [0, 0.0, -0.09], [0.2, 0.18, 0.05])); return; }
-      if (style === 'great') { add(P('cone', 'cloth', 0x2a4aa0, 'head', [0, 0.25, -0.02], [0.24, 0.3, 0.24])); add(P('disc', 'gold', C.gold, 'head', [0, 0.14, 0], [0.24, 0.02, 0.24])); return; }
-      add(P('hemi', 'cloth', 'team', 'head', [0, 0.11, -0.01], [0.235, 0.22, 0.245]));
-      add(P('box', 'cloth', 'team', 'head', [-0.11, -0.02, 0.0], [0.05, 0.2, 0.1])); add(P('box', 'cloth', 'team', 'head', [0.11, -0.02, 0.0], [0.05, 0.2, 0.1]));
-      add(P('box', 'cloth', C.gold, 'head', [0, 0.13, 0.0], [0.24, 0.03, 0.245]));
-    },
-    sword(len, add) {
-      add(P('cyl', 'leather', C.leather, 'tool', [0, 0.02, 0], [0.025, 0.12, 0.025]));
-      add(P('hook', 'metal', 0xc8a050, 'tool', [0.05, 0.22, 0], [0.18, 0.3, 0.2], [0, 0, 1.4]));
-    },
-    shield(c, add) { add(P('box', 'wood', c, 'shield', [0, -0.03, 0.02], [0.24, 0.34, 0.04])); add(P('disc', 'wood', c, 'shield', [0, 0.14, 0.02], [0.24, 0.04, 0.12], [Math.PI / 2, 0, 0])); },
-    body(o, type) {
-      const parts = humanBase({ ...o, torso: 'skin', torsoMat: 'skin', sleeve: 'skin', skirt: false, legs: 'skin' });
-      parts.push(P('taper', 'cloth', 0xf2ecdc, 'body', [0, -0.07, 0], [0.34, 0.2, 0.25], [Math.PI, 0, 0]));
-      parts.push(P('ring', 'gold', isMil(type) ? 'team' : C.gold, 'body', [0, 0.34, 0], [0.34, 0.34, 0.2], [Math.PI / 2, 0, 0]));
-      if (isMil(type)) parts.push(P('box', 'cloth', 'team', 'body', [0, 0.02, 0.1], [0.08, 0.2, 0.02]));
-      return parts;
-    },
-  },
-  incas: {
-    helmet(style, add, type) {
-      if (!isMil(type) || style === 'hood' && type !== 'slinger') { add(P('cone', 'cloth', 'team', 'head', [0, 0.2, 0], [0.24, 0.24, 0.24])); add(P('cyl', 'cloth', 0xe8c040, 'head', [0, 0.1, 0], [0.235, 0.04, 0.235])); return; }
-      if (type === 'slinger') { add(P('cyl', 'cloth', 'team', 'head', [0, 0.12, 0], [0.235, 0.05, 0.235])); add(P('box', 'cloth', 0xe8c040, 'head', [0, 0.26, -0.03], [0.03, 0.18, 0.02], [-0.2, 0, 0])); return; }
-      add(P('hemi', 'wood', 0x8a6a40, 'head', [0, 0.13, 0], [0.235, 0.2, 0.235]));
-      add(P('box', 'cloth', 0xe83a2a, 'head', [0, 0.3, -0.02], [0.03, 0.16, 0.02], [-0.25, 0, 0])); add(P('box', 'cloth', 0xf0c030, 'head', [0.04, 0.29, -0.02], [0.03, 0.14, 0.02], [-0.25, 0, 0.3]));
-      if (style === 'great' || style === 'nasal') add(P('disc', 'gold', C.gold, 'head', [0, 0.18, 0.11], [0.1, 0.02, 0.1], [Math.PI / 2, 0, 0]));
-    },
-    sword(len, add) { add(P('cyl', 'wood', C.wood, 'tool', [0, 0.2, 0], [0.03, 0.42, 0.03])); add(P('dodec', 'metal', 0xb08a40, 'tool', [0, 0.42, 0], [0.13, 0.13, 0.13])); },
-    shield(c, add) { add(P('disc', 'wood', c, 'shield', [0, 0, 0], [0.22, 0.03, 0.22], [Math.PI / 2, 0, 0])); add(P('cone', 'cloth', 0xe8c040, 'shield', [0, -0.16, 0.02], [0.08, 0.12, 0.02], [Math.PI, 0, 0])); },
-    body(o, type) {
-      const parts = humanBase({ ...o, sleeve: 'skin', legs: 'skin' });
-      parts.push(P('box', 'cloth', 0xe8c040, 'body', [0, 0.14, 0.11], [0.22, 0.04, 0.02])); parts.push(P('box', 'cloth', 0xe8c040, 'body', [0, 0.24, 0.11], [0.22, 0.04, 0.02]));
-      void type;
-      return parts;
-    },
-  },
-  japonais: {
-    helmet(style, add, type) {
-      if (!isMil(type) || style === 'kettle') { add(P('cone', 'cloth', C.straw, 'head', [0, 0.2, 0], [0.5, 0.14, 0.5])); return; }
-      if (style === 'hood') { add(P('hemi', 'cloth', 0x202020, 'head', [0, 0.12, -0.01], [0.215, 0.18, 0.215])); add(P('cyl', 'cloth', 0xf0f0f0, 'head', [0, 0.12, 0], [0.23, 0.035, 0.23])); return; }
-      add(P('hemi', 'metal', 0x2a2a30, 'head', [0, 0.13, 0], [0.24, 0.23, 0.24]));
-      add(P('cone', 'metal', 0x2a2a30, 'head', [0, 0.06, -0.02], [0.4, 0.12, 0.38]));
-      add(P('box', 'gold', C.gold, 'head', [-0.06, 0.3, 0.1], [0.02, 0.16, 0.02], [0.2, 0, 0.45])); add(P('box', 'gold', C.gold, 'head', [0.06, 0.3, 0.1], [0.02, 0.16, 0.02], [0.2, 0, -0.45]));
-    },
-    sword(len, add) { add(P('blade', 'metal', C.metal, 'tool', [0, len / 2 + 0.1, 0.01], [0.026, Math.max(0.45, len + 0.1), 0.01], [0.1, 0, 0])); add(P('cyl', 'cloth', 0x202020, 'tool', [0, 0.02, 0], [0.028, 0.16, 0.028])); add(P('disc', 'gold', C.gold, 'tool', [0, 0.09, 0], [0.06, 0.012, 0.06])); },
-    shield() { /* les guerriers japonais ne portent pas de bouclier */ },
-    body(o, type) {
-      if (!isMil(type)) return humanBase({ ...o, torso: 0x4a5a6a });
-      const parts = humanBase({ ...o, torso: 0x2a2a30, torsoMat: 'metal', sleeve: 0x2a2a30 });
-      for (let i = 0; i < 3; i++) parts.push(P('taper', 'cloth', 'team', 'body', [0, 0.06 + i * 0.1, 0], [0.34, 0.02, 0.245]));
-      parts.push(P('box', 'metal', 0x2a2a30, 'body', [-0.19, 0.3, 0], [0.12, 0.12, 0.2])); parts.push(P('box', 'metal', 0x2a2a30, 'body', [0.19, 0.3, 0], [0.12, 0.12, 0.2]));
-      parts.push(P('box', 'cloth', 'team', 'back', [0, 0.3, -0.14], [0.14, 0.3, 0.01]));
-      parts.push(P('cyl', 'wood', C.wood, 'back', [0, 0.25, -0.13], [0.015, 0.6, 0.015]));
-      return parts;
-    },
-  },
-  vikings: {
-    helmet(style, add, type) {
-      add(P('cone', 'cloth', 0xc08a40, 'head', [0, -0.03, 0.08], [0.14, 0.18, 0.1], [Math.PI, 0, 0]));
-      if (!isMil(type) || style === 'hood' || style === 'hair') { add(P('hemi', 'cloth', 0xc08a40, 'head', [0, 0.12, -0.01], [0.22, 0.2, 0.22])); return; }
-      add(P('hemi', 'metal', 0x8a9098, 'head', [0, 0.13, 0], [0.235, 0.25, 0.235]));
-      add(P('box', 'metal', 0x8a9098, 'head', [0, 0.08, 0.115], [0.025, 0.1, 0.02]));
-      if (style === 'great') add(P('box', 'metal', 0x8a9098, 'head', [0, 0.1, 0.1], [0.18, 0.06, 0.04]));
-    },
-    sword(len, add) { add(P('cyl', 'wood', C.wood, 'tool', [0, 0.15, 0], [0.028, 0.5, 0.028])); add(P('box', 'metal', C.metal, 'tool', [0.06, 0.36, 0], [0.14, 0.13, 0.02])); },
-    shield(c, add) { add(P('disc', 'wood', c, 'shield', [0, 0, 0], [0.34, 0.03, 0.34], [Math.PI / 2, 0, 0])); add(P('disc', 'wood', C.wood, 'shield', [0, 0, -0.005], [0.36, 0.025, 0.36], [Math.PI / 2, 0, 0])); add(P('sph', 'metal', C.metal, 'shield', [0, 0, 0.02], [0.08, 0.08, 0.05])); },
-    body(o, type) {
-      const parts = humanBase(o);
-      if (isMil(type)) parts.push(P('box', 'cloth', 0x4a3a2a, 'back', [0, 0.0, -0.13], [0.34, 0.5, 0.02], [0.12, 0, 0]));
-      return parts;
-    },
-  },
-};
 
 // ------------------------------------------------------------------ nature
 export function treeGeometries() {

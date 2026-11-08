@@ -529,6 +529,21 @@ export class Painter {
         ban(0.5, s - 0.02, 66); ban(s - 0.02, s - 0.5, 66);
         break;
       }
+      case 'palisade_gate': {
+        for (const [x, y] of [[0.12, 0.5], [0.88, 0.5]]) this.post(ctx, x, y, 34);
+        const a = iso(0.12, 0.5), b = iso(0.88, 0.5);
+        ctx.fillStyle = '#7a5530';
+        ctx.beginPath(); ctx.moveTo(a.x, a.y - 2); ctx.lineTo(b.x, b.y - 2); ctx.lineTo(b.x, b.y - 22); ctx.lineTo(a.x, a.y - 22); ctx.closePath(); ctx.fill();
+        ctx.strokeStyle = '#4a321c'; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.moveTo(a.x, a.y - 30); ctx.lineTo(b.x, b.y - 30); ctx.moveTo(a.x, a.y - 6); ctx.lineTo(b.x, b.y - 20); ctx.stroke();
+        ctx.fillStyle = trim; const m = iso(0.5, 0.5); ctx.fillRect(m.x - 3, m.y - 20, 6, 9);
+        break;
+      }
+      case 'gate': {
+        this.walls(ctx, 0.05, 0.05, 0.9, 30, 'darkstone', { left: { crenel: true, door: { t: 0.5, w: 12, h: 18 }, trim }, right: { crenel: true, door: { t: 0.5, w: 12, h: 18 }, trim }, top: false });
+        ban(0.5, 0.95, 40);
+        break;
+      }
       default:
         this.walls(ctx, 0.2, 0.2, s - 0.4, 24, 'stone');
     }

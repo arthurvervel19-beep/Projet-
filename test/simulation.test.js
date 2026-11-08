@@ -112,3 +112,61 @@ test('unités aériennes, revenus et merveille', async () => {
   assert.equal(g.victoryReason, 'wonder');
   void BUILDINGS;
 });
+
+test('les portes laissent passer leur propriétaire et bloquent l’ennemi', async () => {
+  const { TERRAIN } = await import('../public/js/config.js');
+  const g = new Game({ seed: 5, size: 64, players: 2, humanPlayer: -1 });
+  const W = g.map.w;
+  // une colonne libre, transformée en rempart sur toute la hauteur de la carte
+  let cx = 32;
+  const bandFree = (c) => { for (let y = 0; y < W; y++) for (let x = c - 3; x <= c + 3; x++) { const e = g.entities.get(g.map.occ[y * W + x]); if (e && e.kind === 'building') return false; } return true; };
+  while (!bandFree(cx)) cx++;
+  for (let y = 0; y < W; y++) for (let x = cx - 3; x <= cx + 3; x++) {
+    const i = y * W + x;
+    const e = g.entities.get(g.map.occ[i]);
+    if (e && e.kind === 'resource') g.removeEntity(e);
+    g.map.terrain[i] = TERRAIN.GRASS;
+  }
+  for (const u of g.units) if (Math.abs(u.x - cx) < 4) g.removeEntity(u);
+  g.cleanup();
+  const gy = 32;
+  for (let y = 0; y < W; y++) if (y !== gy) g.createBuilding('stone_wall', 0, cx, y, true);
+  // la porte se pose sur un segment de mur existant
+  g.createBuilding('stone_wall', 0, cx, gy, true);
+  const vil = g.createUnit('villager', 0, cx - 1.5, gy + 0.5);
+  g.players[0].age = 1;
+  g.players[0].res.stone = 500;
+  assert.equal(g.canPlace(0, 'gate', cx, gy), true, 'porte sur la muraille');
+  assert.equal(g.canPlace(1, 'gate', cx, gy), false, 'pas sur la muraille adverse');
+  const gate = g.issue(0, { type: 'build', ids: [vil.id], building: 'gate', tx: cx, ty: gy });
+  assert.ok(gate && gate.type === 'gate');
+  for (let i = 0; i < 40 / TICK && !gate.built; i++) g.update(TICK);
+  assert.ok(gate.built, 'porte construite');
+  // nos unités traversent
+  const mine = g.createUnit('spearman', 0, cx - 2.5, gy + 0.5);
+  g.issue(0, { type: 'move', ids: [mine.id], x: cx + 3.5, y: gy + 0.5 });
+  for (let i = 0; i < 15 / TICK; i++) g.update(TICK);
+  assert.ok(mine.x > cx + 2, `l’unité alliée a franchi la porte (${mine.x.toFixed(1)})`);
+  // l'ennemi est bloqué
+  const foe = g.createUnit('spearman', 1, cx + 3.5, gy - 3.5);
+  g.issue(1, { type: 'move', ids: [foe.id], x: cx - 3.5, y: gy - 3.5 });
+  for (let i = 0; i < 15 / TICK; i++) g.update(TICK);
+  assert.ok(foe.x > cx + 0.9, `l’ennemi reste dehors (${foe.x.toFixed(1)})`);
+  // verrouillée, la porte bloque aussi son propriétaire
+  g.issue(0, { type: 'gateLock', building: gate.id, locked: true });
+  g.issue(0, { type: 'move', ids: [mine.id], x: cx - 3.5, y: gy + 0.5 });
+  for (let i = 0; i < 10 / TICK; i++) g.update(TICK);
+  assert.ok(mine.x > cx + 0.9, 'porte verrouillée');
+  g.issue(0, { type: 'gateLock', building: gate.id, locked: false });
+  g.issue(0, { type: 'move', ids: [mine.id], x: cx - 3.5, y: gy + 0.5 });
+  for (let i = 0; i < 12 / TICK; i++) g.update(TICK);
+  assert.ok(mine.x < cx - 1, 'porte rouverte');
+  g.removeEntity(mine); g.cleanup();
+  // en attaque-mouvement, l'ennemi s'attaque au rempart qui le bloque
+  const hp = gate.hp;
+  const rams = [0, 1, 2].map((k) => g.createUnit('champion', 1, cx + 2.5, gy - 1 + k));
+  g.issue(1, { type: 'move', ids: rams.map((u) => u.id), x: cx - 6, y: gy + 0.5, aggressive: true });
+  for (let i = 0; i < 30 / TICK; i++) g.update(TICK);
+  const walls = g.buildings.filter((b) => b.owner === 0 && (b.type === 'stone_wall' || b.type === 'gate'));
+  assert.ok(gate.hp < hp || gate.dead || walls.some((w) => w.hp < w.maxHp), 'le rempart est attaqué');
+});

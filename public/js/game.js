@@ -32,10 +32,13 @@ export class Game {
       terrain: new Uint8Array(n),
       occ: new Int32Array(n), // entité bloquante (bâtiment / ressource)
       farm: new Int32Array(n), // fermes (non bloquantes)
+      gate: new Int16Array(n), // portes ouvertes : propriétaire + 1
+      who: -1, // joueur dont on teste le passage (les portes ne s'ouvrent que pour lui)
       walkable(x, y) {
         if (x < 0 || y < 0 || x >= size || y >= size) return false;
         const i = y * size + x;
-        return self.map.terrain[i] !== TERRAIN.WATER && self.map.occ[i] === 0;
+        if (self.map.terrain[i] === TERRAIN.WATER) return false;
+        return self.map.occ[i] === 0 || (self.map.gate[i] !== 0 && self.map.gate[i] - 1 === self.map.who);
       },
     };
     this.pathfinder = new PathFinder(this.map);
@@ -117,7 +120,7 @@ export class Game {
       const isFarm = e.kind === 'building' && BUILDINGS[e.type].farm;
       const arr = isFarm ? this.map.farm : this.map.occ;
       for (let y = e.ty; y < e.ty + e.size; y++) for (let x = e.tx; x < e.tx + e.size; x++) {
-        if (arr[y * W + x] === e.id) arr[y * W + x] = 0;
+        if (arr[y * W + x] === e.id) { arr[y * W + x] = 0; this.map.gate[y * W + x] = 0; }
       }
       if (e.kind === 'building') {
         const p = this.players[e.owner];
@@ -134,11 +137,37 @@ export class Game {
     for (const u of this.units) {
       if (u.dead || this.isAir(u)) continue;
       if (u.x >= b.tx - 0.2 && u.x <= b.tx + b.size + 0.2 && u.y >= b.ty - 0.2 && u.y <= b.ty + b.size + 0.2) {
-        if (this.map.walkable(Math.floor(u.x), Math.floor(u.y))) continue;
+        this.map.who = u.owner;
+        const ok = this.map.walkable(Math.floor(u.x), Math.floor(u.y));
+        this.map.who = -1;
+        if (ok) continue;
         const spot = this.findFreeSpot(b, u.x, u.y);
         if (spot) { u.x = u.px = spot.x; u.y = u.py = spot.y; u.path = null; }
       }
     }
+  }
+
+  // ---------------------------------------------------------------- portes
+  // une porte construite et déverrouillée laisse passer son propriétaire
+  setGate(b) {
+    const i = b.ty * this.map.w + b.tx;
+    this.map.gate[i] = b.built && !b.locked && !b.dead ? b.owner + 1 : 0;
+  }
+
+  // mur ou porte ennemis qui bloquent le passage d'une unité
+  blockingWall(u, maxD = 2.2) {
+    if (this.isAir(u)) return null;
+    const st = this.unitStats(u.owner, u.type);
+    let best = null, bestS = Infinity;
+    for (const b of this.buildings) {
+      if (b.dead || !this.isEnemy(u.owner, b.owner) || !BUILDINGS[b.type].wall) continue;
+      const d = this.distTo(u, b);
+      if (d > maxD) continue;
+      if (!this.canHit(st, b)) continue;
+      const s = d + (BUILDINGS[b.type].gate ? -0.6 : 0) + b.hp / b.maxHp * 0.3;
+      if (s < bestS) { bestS = s; best = b; }
+    }
+    return best;
   }
 
   // Cherche une tuile libre autour d'un rectangle (pour faire apparaître une unité)
@@ -284,7 +313,12 @@ export class Game {
       for (let x = tx; x < tx + s; x++) {
         if (x < 0 || y < 0 || x >= W || y >= this.map.h) return false;
         const i = y * W + x;
-        if (this.map.terrain[i] === TERRAIN.WATER || this.map.occ[i] || this.map.farm[i]) return false;
+        if (this.map.terrain[i] === TERRAIN.WATER || this.map.farm[i]) return false;
+        if (this.map.occ[i]) {
+          // une porte peut remplacer un segment de mur existant
+          const w = def.gate ? this.entities.get(this.map.occ[i]) : null;
+          if (!w || w.dead || w.kind !== 'building' || w.owner !== owner || !BUILDINGS[w.type].wall || BUILDINGS[w.type].gate) return false;
+        }
         if (p.isHuman && !p.explored[i]) return false;
       }
     }
@@ -353,6 +387,14 @@ export class Game {
         return true;
       }
       case 'market': return this.cmdMarket(owner, cmd.action, cmd.res);
+      case 'gateLock': {
+        const b = this.get(cmd.building);
+        if (!b || b.owner !== owner || !BUILDINGS[b.type].gate) return false;
+        b.locked = cmd.locked === undefined ? !b.locked : !!cmd.locked;
+        this.setGate(b);
+        if (b.locked) this.pushUnitsOut(b);
+        return true;
+      }
       case 'factoryMode': {
         const b = this.get(cmd.building);
         if (!b || b.owner !== owner || !BUILDINGS[b.type].factory || !RESOURCES.includes(cmd.res)) return false;
@@ -402,6 +444,7 @@ export class Game {
 
   cmdMove(units, x, y, aggressive) {
     if (!units.length) return false;
+    this.map.who = units[0].owner;
     // formation simple : grille centrée sur la destination
     const n = units.length;
     const cols = Math.ceil(Math.sqrt(n));
@@ -417,6 +460,7 @@ export class Game {
       u.order = { kind: 'move', x: tx, y: ty, aggressive };
       u.path = null;
     });
+    this.map.who = -1;
     return true;
   }
 
@@ -433,6 +477,11 @@ export class Game {
     if (!this.canPlace(owner, type, tx, ty)) { this.msg(owner, 'Emplacement invalide.', 'warn'); return false; }
     if (!this.canAfford(p, def.cost)) { this.msg(owner, this.missingText(p, def.cost), 'warn'); return false; }
     this.pay(p, def.cost);
+    if (def.gate) {
+      // le segment de mur remplacé disparaît
+      const old = this.entities.get(this.map.occ[ty * this.map.w + tx]);
+      if (old && !old.dead && old.kind === 'building') this.removeEntity(old);
+    }
     const b = this.createBuilding(type, owner, tx, ty, false);
     units.filter((u) => u.type === 'villager').forEach((u) => { u.order = { kind: 'build', target: b.id }; u.path = null; });
     return b;
@@ -533,10 +582,12 @@ export class Game {
     for (const u of this.units) { u.px = u.x; u.py = u.y; }
     for (const u of this.units) {
       if (u.dead) continue;
+      this.map.who = u.owner;
       this.updateUnit(u, dt);
       if (u.owner >= 0 && u.hp < u.maxHp) { const rg = this.players[u.owner].mods.regen; if (rg) u.hp = Math.min(u.maxHp, u.hp + rg * dt); }
     }
     this.separate();
+    this.map.who = -1;
     for (const b of this.buildings) if (!b.dead) this.updateBuilding(b, dt);
     this.updateProjectiles(dt);
     for (const fx of this.effects) fx.t += dt;
@@ -655,6 +706,7 @@ export class Game {
 
   nudge(u, dx, dy) {
     const nx = u.x + dx, ny = u.y + dy;
+    this.map.who = u.owner;
     if (this.map.walkable(Math.floor(nx), Math.floor(ny))) { u.x = nx; u.y = ny; }
   }
 
@@ -697,17 +749,29 @@ export class Game {
     if (this.isAir(u)) { if (this.flyTo(u, o.x, o.y, dt)) u.order = null; return; }
     if (!u.path) {
       const res = this.pathTo(u, { x0: o.x, y0: o.y, x1: o.x, y1: o.y }, 0);
+      o.unreached = !res.reached;
       // remplace le dernier point par la destination exacte si atteignable
       if (res.reached && this.map.walkable(Math.floor(o.x), Math.floor(o.y))) {
         if (res.points.length) res.points[res.points.length - 1] = { x: o.x, y: o.y };
         else res.points.push({ x: o.x, y: o.y });
       }
-      if (!res.points.length) { u.order = null; return; }
+      if (!res.points.length) { if (!this.breach(u, o)) u.order = null; return; }
     }
     if (this.step(u, dt)) {
       if (u.path === null) return; // chemin bloqué → on recalculera
+      if (this.breach(u, o)) return;
       u.order = null; u.path = null;
     }
+  }
+
+  // attaque-mouvement arrêtée par un rempart : on attaque la porte ou le mur qui bloque
+  breach(u, o) {
+    if (!o.aggressive || !o.unreached || UNITS[u.type].cls === 'villager') return false;
+    const w = this.blockingWall(u);
+    if (!w) return false;
+    u.order = { kind: 'attack', target: w.id, then: { kind: 'move', x: o.x, y: o.y, aggressive: true } };
+    u.path = null;
+    return true;
   }
 
   // Trouve la meilleure cible ennemie à proximité
@@ -753,7 +817,12 @@ export class Game {
     if (!this.canHit(st, t)) { u.order = o.then || null; u.path = null; return; }
     const range = st.range > 0 ? st.range : REACH - 0.15 + (t.kind === 'unit' ? u.radius : 0);
     const r = this.approach(u, t, range, dt);
-    if (r === null) { u.order = o.then || null; return; }
+    if (r === null) {
+      // cible derrière un rempart : on attaque la porte ou le mur le plus proche
+      const w = UNITS[u.type].cls !== 'villager' && !(t.kind === 'building' && BUILDINGS[t.type].wall) ? this.blockingWall(u) : null;
+      if (w) { u.order = { kind: 'attack', target: w.id, then: o.auto ? (o.then || null) : o }; u.path = null; return; }
+      u.order = o.then || null; return;
+    }
     if (!r) return;
     u.dir = (t.x - u.x) - (t.y - u.y) >= 0 ? 1 : -1;
     u.working = true;
@@ -1024,6 +1093,7 @@ export class Game {
     this.recomputePopCap(p);
     p.stats.built++;
     const bd = BUILDINGS[b.type];
+    if (bd.gate) this.setGate(b);
     if (bd.wonder || bd.space) {
       b.countdown = bd.space ? LAUNCH_TIME : WONDER_TIME;
       const mins = Math.round(b.countdown / 60);

@@ -293,6 +293,16 @@ export const BUILDINGS = {
     name: 'Muraille de pierre', icon: '🧱', cost: { stone: 6 }, size: 1, hp: 1800, time: 7, age: 1, wall: true,
     armor: [8, 10], los: 2, hotkey: 'U', desc: 'Rempart crénelé très résistant. Cliquez-glissez pour tracer une ligne.',
   },
+  palisade_gate: {
+    name: 'Porte de palissade', icon: '🚪', cost: { wood: 30 }, size: 1, hp: 500, time: 10, age: 0, wall: true, gate: true, gateOf: 'palisade',
+    armor: [2, 5], los: 2, hotkey: 'R',
+    desc: "Porte en bois : vos unités la franchissent, l'ennemi reste bloqué. Placez-la sur une palissade existante ou dans un passage.",
+  },
+  gate: {
+    name: 'Porterie', icon: '🏰', cost: { stone: 30 }, size: 1, hp: 2600, time: 18, age: 1, wall: true, gate: true, gateOf: 'stone_wall',
+    armor: [8, 10], los: 3, hotkey: 'E',
+    desc: "Porte fortifiée encadrée de deux tours : vos unités passent, l'ennemi reste bloqué. Placez-la sur une muraille existante ou dans un passage. Peut être verrouillée.",
+  },
   barracks: {
     name: 'Caserne', icon: '⚔️', cost: { wood: 175 }, size: 3, hp: 1200, time: 35, age: 0,
     trains: ['militia', 'spearman', 'swordsman', 'champion', 'soldier', 'machine_gunner', 'exo_soldier'], techs: ['conscription'], armor: [0, 7], los: 5, countsForAge: true, hotkey: 'B',
@@ -370,8 +380,8 @@ export const BUILDINGS = {
 
 // Ordre d'affichage du menu de construction des villageois
 export const BUILD_PAGES = [
-  { name: 'Économie', list: ['house', 'mill', 'lumber_camp', 'mining_camp', 'farm', 'palisade', 'stone_wall', 'market', 'town_center', 'university', 'bank', 'factory', 'wonder', 'space_program'] },
-  { name: 'Armée et défense', list: ['barracks', 'archery_range', 'stable', 'blacksmith', 'tower', 'siege_workshop', 'fortress', 'bunker', 'airfield', 'laser_turret'] },
+  { name: 'Économie', list: ['house', 'mill', 'lumber_camp', 'mining_camp', 'farm', 'market', 'town_center', 'university', 'bank', 'factory', 'wonder', 'space_program'] },
+  { name: 'Armée et défense', list: ['palisade', 'palisade_gate', 'stone_wall', 'gate', 'tower', 'barracks', 'archery_range', 'stable', 'blacksmith', 'siege_workshop', 'fortress', 'bunker', 'airfield', 'laser_turret'] },
 ];
 export const BUILD_MENU = BUILD_PAGES.flatMap((p) => p.list);
 

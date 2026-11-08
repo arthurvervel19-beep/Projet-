@@ -29,8 +29,18 @@ Ouvrez ensuite <http://localhost:3000> dans votre navigateur. Pour changer de po
   qui ondulent au vent, ombres de nuages, brouillard de guerre adouci. Particules : fumée des
   cheminées, forge, incendies des bâtiments endommagés, poussière, explosions.
 - **Modèles 3D procéduraux** texturés (pierre, colombages, tuiles, ardoise, chaume, planches)
-  avec bandes et bannières aux couleurs du joueur. Unités animées (marche, attaque,
-  récolte) : fantassins, archers, cavaliers, engins de siège, chars, robots, avions et drones. Portraits 3D dans l'interface.
+  avec bandes et bannières aux couleurs du joueur. Portraits 3D dans l'interface.
+- **Unités détaillées** : squelette articulé (épaules, coudes, poignets, hanches, genoux,
+  chevilles), visages (yeux, sourcils, nez, oreilles, bouche), coiffures, barbes et teints
+  variés d'un soldat à l'autre. Équipement propre à chaque civilisation : cottes de mailles,
+  armures de plates, cuirasses, heaumes à visière, casques à cimier, boucliers peints,
+  arcs, arbalètes, mousquets, fusils. Chevaux articulés (encolure, tête, crinière, queue,
+  jambes à deux segments, sabots), avec selle, bride, rênes ou caparaçon.
+- **Animations** : marche avec flexion des genoux et balancier des bras, trot des chevaux,
+  respiration et regard au repos, garde de combat, coups d'épée avec rotation du buste et
+  fente, coups de lance, tir à l'arc (bander, décocher), visée à l'épaule, recul des armes
+  à feu, travail des villageois, chute des morts. Les petits détails ne sont dessinés que de
+  près, et les unités hors de l'écran ne sont pas animées.
 - **4 qualités graphiques** : Ultra, Équilibrée, Performance (3D) et Classique (2D, utilisée
   automatiquement si WebGL 2 n'est pas disponible).
 - **6 civilisations** jouables, chacune avec son architecture, l'apparence de ses unités,
@@ -46,7 +56,7 @@ Ouvrez ensuite <http://localhost:3000> dans votre navigateur. Pour changer de po
   | Vikings | rondins, grande halle, proues de dragon | infanterie +15 % vitesse, villageois +10 PV | Berserker |
 
 - **Carte procédurale** : lacs, plages, forêts, filons d'or et de pierre, baies, moutons.
-- **4 ressources**, **8 âges**, **24 bâtiments** (dont palissade et muraille de pierre à
+- **4 ressources**, **8 âges**, **26 bâtiments** (dont palissade et muraille de pierre à
   tracer en cliquant-glissant, avec tours automatiques aux angles), **34 unités**
   (dont 3 volantes), **44 technologies**, marché à cours variables.
 - **8 âges, du Moyen Âge au futur** :
@@ -69,6 +79,10 @@ Ouvrez ensuite <http://localhost:3000> dans votre navigateur. Pour changer de po
 - **Armes à feu et unités volantes** : balles traçantes, obus explosifs, rayons laser, bombes ;
   les bombardiers et drones survolent le terrain et seules les unités à distance et les
   bâtiments défensifs peuvent les toucher.
+- **Portes** : porte de palissade et porterie fortifiée, à poser sur un mur existant ou
+  dans un passage. Vos unités les franchissent (les battants s'ouvrent à leur approche),
+  l'ennemi reste bloqué ; une porte peut être verrouillée (touche L). Une armée ennemie
+  arrêtée par un rempart s'attaque à la porte ou au mur qui lui barre la route.
 - **Combat** : armures de mêlée et de perçage, bonus d'unités, projectiles, tours qui tirent.
 - **Musique rock / électro générée en temps réel** : batterie, guitares saturées doublées,
   basse, nappes et arpèges de synthés, montées et impacts. Le style suit la partie
@@ -90,6 +104,7 @@ Ouvrez ensuite <http://localhost:3000> dans votre navigateur. Pour changer de po
 | Raccourcis | H : hôtel de ville, `.` : villageois inactif, Suppr : détruire, Échap : annuler / pause |
 | Production | Maj + clic sur une unité : en former 5 |
 | Construction | V : changer de page (Économie / Armée et défense) |
+| Portes | Sélectionnez une porte, puis L pour la verrouiller ou la déverrouiller |
 
 **Victoire** : détruire toutes les unités et tous les bâtiments principaux de l'adversaire,
 ou garder une merveille debout 8 minutes, ou faire décoller une fusée depuis le programme spatial.
@@ -106,6 +121,7 @@ public/js/pathfinding.js  A* 8 directions avec lissage des trajets
 public/js/game.js    moteur de simulation (sans DOM, testable dans Node)
 public/js/ai.js      intelligence artificielle
 public/js/r3d/       rendu 3D : moteur, shaders, modèles, styles des civilisations, textures
+public/js/r3d/units.js  unités : anatomie, équipements, squelette et animations
 public/js/render.js  rendu 2D « classique » (repli sans WebGL)
 public/js/terrain.js champs du terrain et couleurs (minicarte, rendu 2D)
 public/js/sprites.js sprites du rendu 2D
@@ -130,7 +146,8 @@ npm test
 
 Les tests génèrent des cartes, vérifient la récolte et font jouer l'IA contre elle-même
 pendant 16 minutes de jeu simulé, et vérifient la progression jusqu'à l'âge du Futur,
-les unités volantes, les revenus de la banque et les victoires par merveille et par fusée.
+les unités volantes, les revenus de la banque, les victoires par merveille et par fusée, et
+le fonctionnement des portes (passage, blocage de l'ennemi, verrouillage, brèche).
 
 ## Performances
 

@@ -13,6 +13,8 @@ const LINE = {
   clock: '<circle cx="12" cy="12" r="8.5"/><path d="M12 7v5l3 2"/>',
   idle: '<path d="M4 20c0-3 3-5 6-5s6 2 6 5"/><circle cx="10" cy="9" r="3.2"/><path d="M15 4h4l-4 4h4"/>',
   menu: '<path d="M4 7h16M4 12h16M4 17h16"/>',
+  lock: '<rect x="5" y="10" width="14" height="10" rx="2" fill="currentColor" fill-opacity=".25"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/><path d="M12 14v2"/>',
+  unlock: '<rect x="5" y="10" width="14" height="10" rx="2" fill="currentColor" fill-opacity=".15"/><path d="M8 10V7a4 4 0 0 1 7.5-1.8"/><path d="M12 14v2"/>',
   music: '<path d="M9 18V6l11-2v12"/><circle cx="6.5" cy="18" r="2.5" fill="currentColor" fill-opacity=".3"/><circle cx="17.5" cy="16" r="2.5" fill="currentColor" fill-opacity=".3"/>',
   stop: '<path d="M8 3h8l5 5v8l-5 5H8l-5-5V8z" fill="currentColor" fill-opacity=".2"/><path d="M8.5 12h7"/>',
   attackMove: '<path d="m4 20 9-9M13 5l5-1-1 5-4 4-4-4z" fill="currentColor" fill-opacity=".2"/><path d="M4 4l4 4M4 8V4h4"/>',

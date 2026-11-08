@@ -272,6 +272,54 @@ function cloth(size) {
   return c;
 }
 
+// cotte de mailles : anneaux entrelacés
+function mail(size) {
+  const c = canvas(size), g = c.getContext('2d');
+  g.fillStyle = '#3a3a3a'; g.fillRect(0, 0, size, size);
+  const n = 16, cell = size / n;
+  for (let j = -1; j <= n; j++) for (let i = -1; i <= n; i++) {
+    const x = (i + (j % 2 ? 0.5 : 0)) * cell, y = j * cell * 0.86;
+    g.lineWidth = cell * 0.24;
+    g.strokeStyle = '#d8d8d8';
+    g.beginPath(); g.ellipse(x, y, cell * 0.42, cell * 0.36, 0, 0, Math.PI * 2); g.stroke();
+    g.lineWidth = cell * 0.08; g.strokeStyle = '#ffffff';
+    g.beginPath(); g.ellipse(x - cell * 0.05, y - cell * 0.05, cell * 0.36, cell * 0.3, 0, Math.PI * 1.1, Math.PI * 1.7); g.stroke();
+  }
+  return c;
+}
+
+// cuir : grain et éraflures
+function leather(size) {
+  const r = prng(71), c = canvas(size), g = c.getContext('2d');
+  noiseFill(g, size, [215, 215, 215], [26, 26, 26], [32, 96], r);
+  g.globalAlpha = 0.18;
+  for (let i = 0; i < 90; i++) { g.strokeStyle = r() < 0.5 ? '#000' : '#fff'; g.lineWidth = 0.6 + r(); const x = r() * size, y = r() * size; g.beginPath(); g.moveTo(x, y); g.lineTo(x + (r() - 0.5) * 30, y + (r() - 0.5) * 30); g.stroke(); }
+  g.globalAlpha = 1;
+  return c;
+}
+
+// mèches (cheveux, crins, fourrure)
+function fur(size) {
+  const r = prng(72), c = canvas(size), g = c.getContext('2d');
+  g.fillStyle = '#b8b8b8'; g.fillRect(0, 0, size, size);
+  for (let i = 0; i < size * 6; i++) {
+    const x = r() * size, y = r() * size, l = 6 + r() * 18, v = 150 + r() * 105;
+    g.strokeStyle = `rgba(${v},${v},${v},0.7)`; g.lineWidth = 0.6 + r() * 1.4;
+    g.beginPath(); g.moveTo(x, y); g.quadraticCurveTo(x + (r() - 0.5) * 4, y + l / 2, x + (r() - 0.5) * 6, y + l); g.stroke();
+  }
+  return c;
+}
+
+// robe du cheval : pelage fin
+function coat(size) {
+  const r = prng(73), c = canvas(size), g = c.getContext('2d');
+  noiseFill(g, size, [228, 228, 228], [14, 14, 14], [8, 48], r);
+  g.globalAlpha = 0.1;
+  for (let i = 0; i < size * 3; i++) { const x = r() * size, y = r() * size; g.strokeStyle = r() < 0.5 ? '#000' : '#fff'; g.lineWidth = 0.7; g.beginPath(); g.moveTo(x, y); g.lineTo(x + 1, y + 5 + r() * 4); g.stroke(); }
+  g.globalAlpha = 1;
+  return c;
+}
+
 // pierres polygonales ajustées (maçonnerie inca)
 function ashlar(size) {
   const r = prng(61), c = canvas(size), g = c.getContext('2d');
@@ -345,7 +393,11 @@ export function buildTextures(renderer, quality = 'high') {
     thatch: pair(roofRows(S, 'thatch', [196, 160, 88], 29), 3),
     bark: pair(bark(S / 2), 4),
     foliage: tex(foliage(S / 2)),
-    cloth: tex(cloth(S / 4)),
+    cloth: pair(cloth(S / 4), 1.5),
+    mail: pair(mail(S / 4), 5),
+    leather: pair(leather(S / 4), 2),
+    fur: pair(fur(S / 4), 3),
+    coat: pair(coat(S / 4), 1.5),
     marble: pair(stoneWall(S, [236, 232, 222], [200, 194, 182], 40, 6, 16), 2.5),
     sandstone: pair(stoneWall(S, [224, 192, 140], [184, 152, 106], 41, 7, 22), 3),
     mudbrick: pair(stoneWall(S, [198, 150, 104], [168, 126, 86], 42, 14, 30), 2.5),
@@ -355,5 +407,7 @@ export function buildTextures(renderer, quality = 'high') {
     logs: pair(logs(S), 4),
     kawara: pair(roofRows(S, 'tile', [92, 96, 106], 45), 5),
   };
+  T.metalNoise = T.leather.normal;
+  for (const k of ['mail', 'cloth', 'leather']) for (const t of [T[k].map, T[k].normal]) t.repeat.set(k === 'mail' ? 3 : 2, k === 'mail' ? 3 : 2);
   return T;
 }
