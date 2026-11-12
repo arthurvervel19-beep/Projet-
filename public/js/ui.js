@@ -43,6 +43,7 @@ export class UI {
     this.mctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     this.mmW = w; this.mmH = h;
     this.r.minimapBase = null;
+    this.mmTimer = 0; // redessinée dès la prochaine image (la toile vient d'être vidée)
   }
 
   // ------------------------------------------------------------------ événements
@@ -56,10 +57,16 @@ export class UI {
   bind() {
     this.listeners = [];
     const c = this.canvas;
+    // après un toucher, le navigateur simule des événements de souris : la carte les ignore
+    this.lastTouch = -1e9;
+    const touched = () => { this.lastTouch = performance.now(); };
+    this.listen(window, 'touchstart', touched, { capture: true, passive: true });
+    this.listen(window, 'touchend', touched, { capture: true, passive: true });
+    const real = (fn) => (e) => { if (performance.now() - this.lastTouch > 900) fn(e); };
     this.listen(c, 'contextmenu', (e) => e.preventDefault());
-    this.listen(c, 'mousedown', (e) => this.onDown(e));
-    this.listen(window, 'mousemove', (e) => this.onMove(e));
-    this.listen(window, 'mouseup', (e) => this.onUp(e));
+    this.listen(c, 'mousedown', real((e) => this.onDown(e)));
+    this.listen(window, 'mousemove', real((e) => this.onMove(e)));
+    this.listen(window, 'mouseup', real((e) => this.onUp(e)));
     this.listen(document, 'mouseleave', () => { this.mouse.inside = false; });
     this.listen(document, 'mouseenter', () => { this.mouse.inside = true; });
     this.listen(c, 'wheel', (e) => this.onWheel(e), { passive: false });
@@ -77,6 +84,7 @@ export class UI {
     };
     this.listen(this.minimap, 'contextmenu', (e) => e.preventDefault());
     this.listen(this.minimap, 'mousedown', (e) => {
+      if (performance.now() - this.lastTouch < 900) return;
       const w = mmMove(e);
       if (e.button === 2) { this.commandAt(w.x, w.y, null, e.shiftKey); return; }
       mmDrag = true; this.r.centerOn(w.x, w.y);
@@ -91,7 +99,14 @@ export class UI {
       if (!b) return;
       e.preventDefault();
       const btn = this.buttons[+b.dataset.btn];
-      if (btn) { this.sound('click'); btn.action(e); }
+      if (!btn) return;
+      if (this.touchMode && btn.danger) {
+        // au doigt, une destruction demande un second appui
+        const now = performance.now();
+        if (this.armed !== btn.tip || now - this.armedT > 2500) { this.armed = btn.tip; this.armedT = now; this.sound('click'); this.msg('Touchez de nouveau pour confirmer.', 'warn'); return; }
+        this.armed = null;
+      }
+      this.sound('click'); btn.action(e);
     });
     const info = this.el('info');
     this.listen(info, 'mousedown', (e) => {
@@ -108,8 +123,10 @@ export class UI {
     const showTip = (e) => {
       const t = e.target.closest('[data-tip], [data-btn]');
       if (!t) { tip.classList.add('hidden'); return; }
-      const html = t.dataset.btn !== undefined ? (this.buttons[+t.dataset.btn] || {}).tip : t.dataset.tip;
+      let html = t.dataset.btn !== undefined ? (this.buttons[+t.dataset.btn] || {}).tip : t.dataset.tip;
       if (!html) { tip.classList.add('hidden'); return; }
+      // au doigt, les raccourcis du clavier n'ont pas de sens
+      if (this.touchMode) html = html.replace(/ \((?:[A-Z.]|Suppr|Échap)\)/g, '').replace(/ — Maj\+clic : ×5/, '').replace(/ \(touche \.\)| — clic pour annuler/g, (m) => (m.includes('annuler') ? ' — touchez pour annuler' : ''));
       tip.innerHTML = html;
       tip.classList.remove('hidden');
       const r = tip.getBoundingClientRect();
@@ -117,10 +134,206 @@ export class UI {
       tip.style.top = Math.max(8, e.clientY - r.height - 12) + 'px';
     };
     for (const el of [cmds, info, this.el('topbar')]) {
-      this.listen(el, 'mousemove', showTip);
-      this.listen(el, 'mouseleave', () => tip.classList.add('hidden'));
+      this.listen(el, 'mousemove', real(showTip));
+      this.listen(el, 'mouseleave', real(() => tip.classList.add('hidden')));
+      // au doigt : l'info-bulle s'affiche au toucher, au-dessus du panneau, puis s'efface
+      this.listen(el, 'touchstart', (e) => {
+        this.setTouchMode();
+        const t = e.touches[0];
+        showTip({ target: e.target, clientX: t.clientX, clientY: t.clientY });
+        if (tip.classList.contains('hidden')) return;
+        const r = tip.getBoundingClientRect();
+        const top = el === this.el('topbar') ? el.getBoundingClientRect().bottom + 8 : this.el('bottom').getBoundingClientRect().top - r.height - 8;
+        tip.style.left = Math.max(8, Math.min(window.innerWidth - r.width - 8, t.clientX - r.width / 2)) + 'px';
+        tip.style.top = Math.max(8, top) + 'px';
+        clearTimeout(this.tipTimer);
+        this.tipTimer = setTimeout(() => tip.classList.add('hidden'), 2600);
+      }, { passive: true });
     }
     this.listen(this.el('idle-btn'), 'click', () => this.selectIdleVillager());
+    this.bindTouch();
+  }
+
+  // ------------------------------------------------------------------ tactile
+  // Un doigt : toucher = sélectionner ou donner un ordre, glisser = déplacer la vue,
+  // appui long puis glisser = zone de sélection. Deux doigts : zoom et déplacement.
+  setTouchMode() {
+    if (this.touchMode) return;
+    this.touchMode = true;
+    document.body.classList.add('touch');
+    this.cmdSig = ''; this.hudTimer = 0;
+  }
+
+  bindTouch() {
+    if (document.body.classList.contains('touch')) this.touchMode = true;
+    const c = this.canvas, opt = { passive: false };
+    const LIFT = 44; // le bâtiment glissé reste visible au-dessus du doigt
+    const T = this.tch = { mode: null, x0: 0, y0: 0, x: 0, y: 0, timer: 0, long: false, pinch: null };
+    const clearTimer = () => { if (T.timer) { clearTimeout(T.timer); T.timer = 0; } };
+    const startPinch = (e) => {
+      clearTimer();
+      if (T.mode === 'box') this.dragBox = null;
+      if (T.mode === 'line' && this.placing) { this.placing.lineStart = null; this.placing.tiles = null; }
+      const a = e.touches[0], b = e.touches[1];
+      T.mode = 'pinch';
+      T.pinch = { d: Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY) || 1, cx: (a.clientX + b.clientX) / 2, cy: (a.clientY + b.clientY) / 2 };
+    };
+    this.listen(c, 'touchstart', (e) => {
+      e.preventDefault();
+      this.setTouchMode();
+      this.el('tooltip').classList.add('hidden');
+      if (this.paused) return;
+      if (e.touches.length >= 2) { startPinch(e); return; }
+      const t = e.touches[0];
+      Object.assign(T, { x0: t.clientX, y0: t.clientY, x: t.clientX, y: t.clientY, mode: 'tap', long: false });
+      if (this.placing) {
+        const def = BUILDINGS[this.placing.type];
+        const w = this.worldAt(t.clientX, t.clientY);
+        if (def.wall && !def.gate) { this.placing.lineStart = [Math.floor(w.x), Math.floor(w.y)]; T.mode = 'line'; } else T.mode = 'place';
+        this.updatePlacement(w);
+        return;
+      }
+      if (this.boxMode) { T.mode = 'box'; return; }
+      T.timer = setTimeout(() => {
+        T.timer = 0;
+        if (T.mode !== 'tap') return;
+        T.mode = 'box'; T.long = true;
+        try { if (navigator.vibrate) navigator.vibrate(12); } catch { /* sans vibreur */ }
+      }, 380);
+    }, opt);
+    this.listen(c, 'touchmove', (e) => {
+      e.preventDefault();
+      if (this.paused || !T.mode) return;
+      if (e.touches.length >= 2) {
+        if (T.mode !== 'pinch') startPinch(e);
+        const a = e.touches[0], b = e.touches[1], P = T.pinch;
+        const d = Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY) || 1, cx = (a.clientX + b.clientX) / 2, cy = (a.clientY + b.clientY) / 2;
+        this.r.panBy(-(cx - P.cx), -(cy - P.cy));
+        const f = d / P.d;
+        if (Math.abs(f - 1) > 0.003) this.r.zoomAt(cx, cy, Math.max(0.6, Math.min(1.6, f)));
+        P.d = d; P.cx = cx; P.cy = cy;
+        return;
+      }
+      if (T.mode === 'pinch') return;
+      const t = e.touches[0];
+      const dx = t.clientX - T.x, dy = t.clientY - T.y;
+      T.x = t.clientX; T.y = t.clientY;
+      const far = Math.hypot(T.x - T.x0, T.y - T.y0) > 10;
+      if (T.mode === 'tap' && far) { clearTimer(); T.mode = 'pan'; }
+      if (T.mode === 'pan') this.r.panBy(-dx, -dy);
+      else if (T.mode === 'box') { if (far) this.dragBox = { x0: T.x0, y0: T.y0, x1: T.x, y1: T.y }; }
+      else if (T.mode === 'place' && this.placing) this.updatePlacement(this.worldAt(T.x, T.y - (far ? LIFT : 0)));
+      else if (T.mode === 'line' && this.placing) this.updatePlacement(this.worldAt(T.x, T.y));
+    }, opt);
+    const end = (e) => {
+      e.preventDefault();
+      clearTimer();
+      if (e.touches.length > 0) {
+        // un doigt reste posé après un pincement : il continue à déplacer la vue
+        if (T.mode === 'pinch' && e.touches.length === 1) { const t = e.touches[0]; T.mode = 'pan'; T.x = t.clientX; T.y = t.clientY; }
+        return;
+      }
+      const mode = T.mode;
+      T.mode = null;
+      if (this.paused || e.type === 'touchcancel') { this.dragBox = null; if (this.placing) { this.placing.lineStart = null; this.placing.tiles = null; } return; }
+      if (mode === 'tap') this.tapAt(T.x, T.y);
+      else if (mode === 'box') {
+        if (this.dragBox) this.finishBox(false);
+        else if (T.long) this.longPressAt(T.x, T.y);
+        else this.tapAt(T.x, T.y);
+      } else if (mode === 'line' && this.placing) this.finishLine(false);
+      this.hudTimer = 0;
+    };
+    this.listen(c, 'touchend', end, opt);
+    this.listen(c, 'touchcancel', end, opt);
+
+    // minicarte au doigt
+    const mm = (e) => {
+      e.preventDefault();
+      this.setTouchMode();
+      const t = e.touches[0];
+      if (!t) return;
+      const rect = this.minimap.getBoundingClientRect();
+      const w = this.r.minimapToWorld(t.clientX - rect.left, t.clientY - rect.top, this.mmW, this.mmH);
+      this.r.centerOn(w.x, w.y);
+    };
+    this.listen(this.minimap, 'touchstart', mm, opt);
+    this.listen(this.minimap, 'touchmove', mm, opt);
+
+    // barre d'outils tactile
+    const tb = (id, fn) => { const b = this.el(id); if (b) this.listen(b, 'click', (e) => { e.preventDefault(); this.sound('click'); fn(); this.hudTimer = 0; b.blur(); }); };
+    tb('tb-ok', () => { if (this.placing) this.placeBuilding(false); });
+    tb('tb-cancel', () => this.cancelAll());
+    tb('tb-box', () => { this.boxMode = !this.boxMode; if (this.boxMode) this.msg('Sélection par zone : glissez le doigt autour de vos unités.'); });
+    tb('tb-army', () => this.selectArmy());
+  }
+
+  // annule la pose, le mode en cours ou la sélection (touche Échap, bouton ✕)
+  cancelAll() {
+    if (this.placing || this.mode) { this.placing = null; this.mode = null; return true; }
+    if (this.boxMode) { this.boxMode = false; return true; }
+    if (this.selected.size) { this.selected.clear(); return true; }
+    return false;
+  }
+
+  selectArmy() {
+    const army = this.g.units.filter((u) => !u.dead && u.owner === this.me && u.type !== 'villager');
+    if (!army.length) { this.msg("Vous n'avez pas encore d'armée.", 'warn'); return; }
+    this.selected = new Set(army.map((u) => u.id));
+    this.announce(army, 'select');
+    this.msg(`${army.length} unité${army.length > 1 ? 's' : ''} militaire${army.length > 1 ? 's' : ''} sélectionnée${army.length > 1 ? 's' : ''}.`);
+  }
+
+  // cible sous le doigt, avec une tolérance autour des unités (elles sont petites à l'écran)
+  pickTouch(sx, sy) {
+    const direct = this.pick(sx, sy);
+    if (direct && direct.kind === 'unit') return direct;
+    const g = this.g, vis = g.players[this.me].visible, W = g.map.w;
+    const lift = this.r.pick ? 0 : 12 * this.r.cam.zoom;
+    let best = null, bestD = 30;
+    for (const u of g.units) {
+      if (u.dead || (u.owner !== this.me && !vis[Math.floor(u.y) * W + Math.floor(u.x)])) continue;
+      const p = this.r.toScreen(u.x, u.y, 0.45);
+      const d = Math.hypot(p.x - sx, p.y - lift - sy) + (u.owner === this.me ? 0 : 4);
+      if (d < bestD) { bestD = d; best = u; }
+    }
+    return best || direct;
+  }
+
+  // toucher bref : sélection, ou ordre si des unités sont déjà sélectionnées
+  tapAt(sx, sy) {
+    const w = this.worldAt(sx, sy);
+    const t = this.pickTouch(sx, sy);
+    if (this.mode === 'attackMove') { this.attackMoveAt(w, t, false); return; }
+    const now = performance.now();
+    const mine = !!t && t.owner === this.me;
+    if (mine && t.kind === 'unit' && this.lastClick.id === t.id && now - this.lastClick.t < 400) { this.selectSameType(t); this.lastClick = { t: 0, id: 0 }; return; }
+    const units = this.myUnits();
+    let order = false;
+    if (units.length) {
+      if (!t || !mine) order = true; // sol, ressource, ennemi
+      else if (t.kind === 'building') {
+        // bâtiment allié : seulement s'il y a quelque chose à y faire
+        const def = BUILDINGS[t.type], vils = units.filter((u) => u.type === 'villager');
+        order = vils.length > 0 && (!t.built || t.hp < t.maxHp || !!def.farm || (!!def.drop && vils.some((v) => v.carry.amount > 0 && def.drop.includes(v.carry.type))));
+      }
+    } else if (!t || t.kind === 'resource') {
+      // point de ralliement d'un bâtiment de production
+      order = [...this.selected].some((id) => { const b = this.g.get(id); return b && b.kind === 'building' && b.owner === this.me && b.built && BUILDINGS[b.type].trains; });
+    }
+    if (order) { this.commandAt(w.x, w.y, t, false); return; }
+    if (t) {
+      this.selected = new Set([t.id]);
+      if (mine) { this.sound('select'); if (t.kind === 'unit') this.announce([t], 'select'); } else if (t.kind === 'resource' && t.type === 'sheep') this.sound('bleat');
+      this.lastClick = { t: now, id: t.id };
+    } else this.selected.clear();
+  }
+
+  // appui long sans glisser : toutes les unités du même type, ou tout désélectionner
+  longPressAt(sx, sy) {
+    const t = this.pickTouch(sx, sy);
+    if (t && t.owner === this.me && t.kind === 'unit') this.selectSameType(t);
+    else this.cancelAll();
   }
 
   worldAt(sx, sy) { return this.r.toWorld(sx, sy); }
@@ -144,16 +357,18 @@ export class UI {
       this.placeBuilding(e.shiftKey);
       return;
     }
-    if (this.mode === 'attackMove') {
-      const ids = this.myUnits().map((u) => u.id);
-      const target = this.pick(e.clientX, e.clientY);
-      if (target && this.g.isEnemy(this.me, target.owner)) this.g.issue(this.me, { type: 'attack', ids, target: target.id });
-      else this.g.issue(this.me, { type: 'move', ids, x: w.x, y: w.y, aggressive: true });
-      this.marker = { x: w.x, y: w.y, t: performance.now() / 1000, color: '#ff6b5e' };
-      if (!e.shiftKey) this.mode = null;
-      return;
-    }
+    if (this.mode === 'attackMove') { this.attackMoveAt(w, this.pick(e.clientX, e.clientY), e.shiftKey); return; }
     this.dragStart = { x: e.clientX, y: e.clientY, shift: e.shiftKey, ctrl: e.ctrlKey };
+  }
+
+  attackMoveAt(w, target, keep) {
+    const ids = this.myUnits().map((u) => u.id);
+    if (target && this.g.isEnemy(this.me, target.owner)) this.g.issue(this.me, { type: 'attack', ids, target: target.id });
+    else this.g.issue(this.me, { type: 'move', ids, x: w.x, y: w.y, aggressive: true });
+    this.sound('order');
+    this.marker = { x: w.x, y: w.y, t: performance.now() / 1000, color: '#ff6b5e' };
+    if (!keep) this.mode = null;
+    this.hudTimer = 0;
   }
 
   onMove(e) {
@@ -191,46 +406,16 @@ export class UI {
   onUp(e) {
     if (e.button === 1) { this.pan = null; return; }
     if (e.button !== 0) return;
-    if (this.placing && this.placing.lineStart) {
-      const tiles = this.placing.tiles || [];
-      const ids = this.myVillagers().map((u) => u.id);
-      if (tiles.length && ids.length) {
-        const ok = this.g.issue(this.me, { type: 'buildLine', ids, building: this.placing.type, tiles });
-        if (!ok) this.msg('Emplacement invalide.', 'warn');
-      }
-      if (!e.shiftKey) this.placing = null; else { this.placing.lineStart = null; this.placing.tiles = null; }
-      return;
-    }
+    if (this.placing && this.placing.lineStart) { this.finishLine(e.shiftKey); return; }
     if (!this.dragStart) return;
     const ds = this.dragStart;
     this.dragStart = null;
-    if (this.dragBox) {
-      const b = this.dragBox;
-      this.dragBox = null;
-      const x0 = Math.min(b.x0, b.x1), x1 = Math.max(b.x0, b.x1), y0 = Math.min(b.y0, b.y1), y1 = Math.max(b.y0, b.y1);
-      const inBox = this.g.units.filter((u) => u.owner === this.me && !u.dead && (() => {
-        const p = this.r.toScreen(u.x, u.y);
-        return p.x >= x0 && p.x <= x1 && p.y - 10 * this.r.cam.zoom >= y0 - 10 && p.y - 10 * this.r.cam.zoom <= y1 + 10;
-      })());
-      // si l'on sélectionne des militaires et des villageois, on garde les militaires
-      let list = inBox;
-      if (!ds.shift) this.selected.clear();
-      list.forEach((u) => this.selected.add(u.id));
-      if (list.length) this.announce(list, 'select');
-      this.hudTimer = 0;
-      return;
-    }
+    if (this.dragBox) { this.finishBox(ds.shift); return; }
     const t = this.pick(e.clientX, e.clientY);
     const now = performance.now();
     if (t) {
       if (t.kind === 'unit' && t.owner === this.me && this.lastClick.id === t.id && now - this.lastClick.t < 350) {
-        // double-clic : toutes les unités du même type à l'écran
-        this.selected.clear();
-        for (const u of this.g.units) {
-          if (u.owner !== this.me || u.type !== t.type) continue;
-          const p = this.r.toScreen(u.x, u.y);
-          if (p.x >= 0 && p.y >= 0 && p.x <= this.r.w && p.y <= this.r.h) this.selected.add(u.id);
-        }
+        this.selectSameType(t); // double-clic
       } else if (ds.shift && t.owner === this.me && t.kind === 'unit') {
         if (this.selected.has(t.id)) this.selected.delete(t.id); else this.selected.add(t.id);
         // ne pas mélanger avec des bâtiments
@@ -245,6 +430,46 @@ export class UI {
     this.hudTimer = 0;
   }
 
+  // fin du tracé d'un mur : pose les fondations le long de la ligne
+  finishLine(keep) {
+    const tiles = this.placing.tiles || [];
+    const ids = this.myVillagers().map((u) => u.id);
+    if (tiles.length && ids.length) {
+      const ok = this.g.issue(this.me, { type: 'buildLine', ids, building: this.placing.type, tiles });
+      if (!ok) this.msg('Emplacement invalide.', 'warn');
+    }
+    if (!keep) this.placing = null; else { this.placing.lineStart = null; this.placing.tiles = null; }
+    this.hudTimer = 0;
+  }
+
+  // fin d'une sélection par zone
+  finishBox(add) {
+    const b = this.dragBox;
+    this.dragBox = null;
+    if (!b) return;
+    const x0 = Math.min(b.x0, b.x1), x1 = Math.max(b.x0, b.x1), y0 = Math.min(b.y0, b.y1), y1 = Math.max(b.y0, b.y1);
+    const list = this.g.units.filter((u) => u.owner === this.me && !u.dead && (() => {
+      const p = this.r.toScreen(u.x, u.y);
+      return p.x >= x0 && p.x <= x1 && p.y - 10 * this.r.cam.zoom >= y0 - 10 && p.y - 10 * this.r.cam.zoom <= y1 + 10;
+    })());
+    if (!add) this.selected.clear();
+    list.forEach((u) => this.selected.add(u.id));
+    if (list.length) this.announce(list, 'select');
+    this.hudTimer = 0;
+  }
+
+  // toutes les unités du même type visibles à l'écran
+  selectSameType(t) {
+    this.selected.clear();
+    for (const u of this.g.units) {
+      if (u.dead || u.owner !== this.me || u.type !== t.type) continue;
+      const p = this.r.toScreen(u.x, u.y);
+      if (p.x >= 0 && p.y >= 0 && p.x <= this.r.w && p.y <= this.r.h) this.selected.add(u.id);
+    }
+    this.announce([t], 'select');
+    this.hudTimer = 0;
+  }
+
   onWheel(e) {
     e.preventDefault();
     const f = Math.pow(1.0015, -e.deltaY);
@@ -256,8 +481,7 @@ export class UI {
     const k = e.key;
     this.keys.add(k);
     if (k === 'Escape') {
-      if (this.placing || this.mode) { this.placing = null; this.mode = null; return; }
-      if (this.selected.size) { this.selected.clear(); this.hudTimer = 0; return; }
+      if (this.cancelAll()) { this.hudTimer = 0; return; }
       this.onPause && this.onPause();
       return;
     }
@@ -373,7 +597,11 @@ export class UI {
     if (p.age < def.age) { this.msg(`Nécessite l'${AGES[def.age].name.slice(2)}.`, 'warn'); return; }
     if (!this.g.canAfford(p, def.cost)) { this.msg(this.g.missingText(p, def.cost), 'warn'); return; }
     this.placing = { type, tx: 0, ty: 0 };
-    this.updatePlacement(this.worldAt(this.mouse.x, this.mouse.y));
+    if (this.touchMode) {
+      this.updatePlacement(this.worldAt(window.innerWidth / 2, window.innerHeight * 0.42));
+      this.msg(def.wall && !def.gate ? 'Glissez le doigt pour tracer le mur.' : 'Touchez ou glissez pour placer, puis validez avec ✓.');
+    } else this.updatePlacement(this.worldAt(this.mouse.x, this.mouse.y));
+    this.hudTimer = 0;
   }
 
   updatePlacement(w) {
@@ -423,7 +651,7 @@ export class UI {
     if (this.keys.has('ArrowRight')) dx += 1;
     if (this.keys.has('ArrowUp')) dy -= 1;
     if (this.keys.has('ArrowDown')) dy += 1;
-    if (this.mouse.inside && !this.pan && !this.dragStart && document.hasFocus()) {
+    if (this.mouse.inside && !this.touchMode && !this.pan && !this.dragStart && document.hasFocus()) {
       const m = 6;
       if (this.mouse.x <= m) dx -= 1;
       if (this.mouse.x >= window.innerWidth - m) dx += 1;
@@ -481,6 +709,20 @@ export class UI {
     this.renderInfo();
     this.renderCommands();
     this.renderCountdowns();
+    this.renderTouchBar();
+  }
+
+  renderTouchBar() {
+    const bar = this.el('touchbar');
+    if (!bar) return;
+    bar.classList.toggle('hidden', !this.touchMode);
+    if (!this.touchMode) return;
+    const pl = this.placing && !(BUILDINGS[this.placing.type].wall && !BUILDINGS[this.placing.type].gate);
+    this.el('tb-ok').classList.toggle('hidden', !pl);
+    this.el('tb-cancel').classList.toggle('hidden', !(this.placing || this.mode || this.selected.size || this.boxMode));
+    this.el('tb-box').classList.toggle('on', !!this.boxMode);
+    this.el('tb-box').classList.toggle('hidden', !!this.placing);
+    this.el('tb-army').classList.toggle('hidden', !!this.placing);
   }
 
   sel() { return [...this.selected].map((id) => this.g.get(id)).filter(Boolean); }
@@ -545,12 +787,13 @@ export class UI {
     const g = this.g;
     const list = this.sel();
     const info = this.el('info');
+    info.classList.toggle('empty', !list.length);
     if (!list.length) {
       const p = g.players[this.me];
       info.innerHTML = `<h3>${p.name}</h3><div class="row">${AGES[p.age].name}</div>
         <div class="row">Récolté : ${Object.entries(p.stats.gathered).map(([k, v]) => `<span class="stat">${RI(k)}<b>${v}</b></span>`).join(' ')}</div>
         <div class="row">Ennemis tués : <b>${p.stats.kills}</b> — Pertes : <b>${p.stats.losses}</b></div>
-        <div class="row" style="margin-top:10px">Astuce : sélectionnez un villageois pour construire, ou l'hôtel de ville (H) pour former des villageois.</div>`;
+        <div class="row" style="margin-top:10px">Astuce : sélectionnez un villageois pour construire, ou l'hôtel de ville${this.touchMode ? '' : ' (H)'} pour former des villageois.</div>`;
       return;
     }
     if (list.length > 1) {
@@ -567,7 +810,7 @@ export class UI {
     if (e.kind === 'resource') {
       const n = { tree: 'Arbre', gold: "Filon d'or", stone: 'Carrière de pierre', berries: 'Buisson de baies', sheep: 'Mouton' }[e.type];
       const rt = { tree: 'wood', gold: 'gold', stone: 'stone', berries: 'food', sheep: 'food' }[e.type];
-      html = `<div class="head"><div class="portrait res">${RI(rt)}</div><div><h3>${n}</h3><div class="row">${ownerTxt}</div><div class="row"><span class="stat">${RI(rt)} Restant : <b>${Math.ceil(e.amount)}</b> / ${e.maxAmount}</span></div></div></div>`;
+      html = `<div class="head"><div class="portrait res">${RI(rt)}</div><div><h3>${n}</h3><div class="row owner">${ownerTxt}</div><div class="row keep"><span class="stat">${RI(rt)} Restant : <b>${Math.ceil(e.amount)}</b> / ${e.maxAmount}</span></div></div></div>`;
     } else if (e.kind === 'unit') {
       const st = g.unitStats(e.owner, e.type);
       html = `<div class="head">${this.portrait(e)}<div><h3>${st.name}</h3><div class="row owner">${ownerTxt}</div>
@@ -579,19 +822,19 @@ export class UI {
         const act = !o ? 'Inactif' : o.kind === 'gather' ? `Récolte : ${RES_NAME[o.resType]}` : o.kind === 'build' ? 'Construit' : o.kind === 'drop' ? 'Dépose sa récolte' : o.kind === 'attack' ? 'Attaque' : 'Se déplace';
         html += `<div class="row">${act}${e.carry.amount ? ` — porte ${RI(e.carry.type)} <b>${e.carry.amount}</b>/${g.carryCap(e.owner)}` : ''}</div>`;
       }
-      html += `<div class="row" style="font-size:12px">${st.desc}</div>`;
+      html += `<div class="row desc">${st.desc}</div>`;
     } else {
       const def = BUILDINGS[e.type];
       html = `<div class="head">${this.portrait(e)}<div><h3>${def.name}</h3><div class="row owner">${ownerTxt}</div>
         <div class="hpbar"><div style="width:${100 * e.hp / e.maxHp}%"></div></div></div></div>
         <div class="row stats"><span class="stat" data-tip="Points de vie">${icon('heart')}<b>${Math.ceil(e.hp)}/${e.maxHp}</b></span><span class="stat" data-tip="Armure (mêlée / perçage)">${icon('shield')}<b>${g.armorOf(e).join('/')}</b></span>${def.attack ? `<span class="stat" data-tip="Attaque">${icon('sword')}<b>${g.buildingAttack(e).atk}</b></span><span class="stat" data-tip="Portée">${icon('range')}<b>${g.buildingAttack(e).range}</b></span>` : ''}</div>`;
-      if (!e.built) html += `<div class="row">En construction : <b>${Math.floor(e.progress * 100)}%</b></div>`;
-      if (def.farm && e.built) html += `<div class="row"><span class="stat">${RI('food')} Nourriture restante : <b>${Math.ceil(e.food)}</b></span></div>`;
+      if (!e.built) html += `<div class="row keep">En construction : <b>${Math.floor(e.progress * 100)}%</b></div>`;
+      if (def.farm && e.built) html += `<div class="row keep"><span class="stat">${RI('food')} Nourriture restante : <b>${Math.ceil(e.food)}</b></span></div>`;
       if (def.pop) html += `<div class="row"><span class="stat">${icon('pop')} +${def.pop + (e.type === 'house' ? g.players[e.owner].mods.housePop : 0)} population</span></div>`;
       if (def.income && e.built) html += `<div class="row"><span class="stat">${RI('gold')} +${(def.income.gold * g.players[e.owner].mods.income.bank).toFixed(1)} or / s</span></div>`;
-      if (def.gate && e.built) html += `<div class="row"><span class="stat">${icon(e.locked ? 'lock' : 'unlock')} ${e.locked ? 'Verrouillée : personne ne passe' : 'Ouverte à vos unités, fermée à l’ennemi'}</span></div>`;
+      if (def.gate && e.built) html += `<div class="row keep"><span class="stat">${icon(e.locked ? 'lock' : 'unlock')} ${e.locked ? 'Verrouillée : personne ne passe' : 'Ouverte à vos unités, fermée à l’ennemi'}</span></div>`;
       if (def.factory && e.built) html += `<div class="row"><span class="stat">${RI(e.mode || 'wood')} +${(1.5 * g.players[e.owner].mods.income.factory).toFixed(1)} ${RES_NAME[e.mode || 'wood'].toLowerCase()} / s</span></div>`;
-      if (e.countdown !== undefined) html += `<div class="row"><span class="stat">${icon('clock')} ${def.space ? 'Lancement dans' : 'Victoire dans'} <b>${fmtTime(e.countdown)}</b></span></div>`;
+      if (e.countdown !== undefined) html += `<div class="row keep"><span class="stat">${icon('clock')} ${def.space ? 'Lancement dans' : 'Victoire dans'} <b>${fmtTime(e.countdown)}</b></span></div>`;
       if (def.market && e.owner === this.me) {
         html += `<div class="row">Cours : ${Object.entries(g.marketPrices).map(([k, v]) => `<span class="stat">${RI(k)} achat <b>${v}</b> · vente <b>${Math.round(v * 0.7)}</b> ${RI('gold')}</span>`).join(' — ')}</div>`;
       }
@@ -602,7 +845,7 @@ export class UI {
           return `<div class="q ${q.housed ? 'housed' : ''}" data-cancel="${i}" data-b="${e.id}" data-tip="${name} — clic pour annuler">${qi}${i === 0 ? `<div class="bar" style="width:${100 * q.t / q.time}%"></div>` : ''}</div>`;
         }).join('') + '</div>';
       }
-      if (!e.queue.length || e.owner !== this.me) html += `<div class="row" style="font-size:12px">${def.desc}</div>`;
+      if (!e.queue.length || e.owner !== this.me) html += `<div class="row desc">${def.desc}</div>`;
     }
     info.innerHTML = html;
   }
@@ -634,7 +877,7 @@ export class UI {
         btns.push({ icon: icon('attackMove'), key: 'Q', tip: '<b>Attaque-mouvement</b> (Q)<div>Se déplace en attaquant les ennemis rencontrés.</div>', action: () => { this.mode = 'attackMove'; } });
       }
       btns.push({ icon: icon('stop'), key: 'X', tip: '<b>Stop</b> (X)', action: () => this.g.issue(this.me, { type: 'stop', ids: units.map((u) => u.id) }) });
-      btns.push({ icon: icon('delete'), key: null, tip: '<b>Supprimer</b> (Suppr)', action: () => { this.g.issue(this.me, { type: 'delete', ids: units.map((u) => u.id) }); this.selected.clear(); } });
+      btns.push({ icon: icon('delete'), key: null, danger: true, tip: '<b>Supprimer</b> (Suppr)', action: () => { this.g.issue(this.me, { type: 'delete', ids: units.map((u) => u.id) }); this.selected.clear(); } });
       return btns;
     }
     const b = list[0];
@@ -699,7 +942,7 @@ export class UI {
         }
       }
     }
-    btns.push({ icon: icon('delete'), key: null, tip: '<b>Détruire le bâtiment</b> (Suppr)', action: () => { this.g.issue(this.me, { type: 'delete', ids: [b.id] }); this.selected.clear(); } });
+    btns.push({ icon: icon('delete'), key: null, danger: true, tip: '<b>Détruire le bâtiment</b> (Suppr)', action: () => { this.g.issue(this.me, { type: 'delete', ids: [b.id] }); this.selected.clear(); } });
     return btns;
   }
 
@@ -709,6 +952,10 @@ export class UI {
     const sig = btns.map((b) => b.icon + b.key + (b.disabled ? 1 : 0) + (b.badge || '')).join('|') + [...this.selected].join(',');
     if (sig === this.cmdSig) return;
     this.cmdSig = sig;
+    this.el('commands').classList.toggle('empty', !btns.length);
+    // la liste revient au début quand la sélection ou la page change, pas à chaque rafraîchissement
+    const ctx = [...this.selected].join(',') + '|' + (this.buildPage || 0);
+    if (ctx !== this.cmdCtx) { this.cmdCtx = ctx; this.el('commands').scrollLeft = 0; }
     this.el('commands').innerHTML = btns.map((b, i) => `<button class="cmd ${b.disabled ? 'disabled' : ''}" data-btn="${i}">${b.icon}${b.key ? `<span class="hk">${b.key}</span>` : ''}${b.badge ? `<span class="badge">${b.badge}</span>` : ''}</button>`).join('');
   }
 }

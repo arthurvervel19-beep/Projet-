@@ -189,9 +189,19 @@ export class AudioEngine {
   toggleMute() {
     this.muted = !this.muted; localSet('muted', this.muted ? '1' : '0');
     if (this.master) this.master.gain.setTargetAtTime(this.muted ? 0 : 0.72, this.ctx.currentTime, 0.1);
-    if (this.muted && typeof speechSynthesis !== 'undefined') speechSynthesis.cancel();
+    if (this.muted) this.hush();
     return this.muted;
   }
+
+  // coupe les voix en cours
+  hush() {
+    if (typeof speechSynthesis !== 'undefined') speechSynthesis.cancel();
+    try { if (typeof window !== 'undefined' && window.AndroidVoix) window.AndroidVoix.stop(); } catch { /* sans synthèse */ }
+  }
+
+  // application en arrière-plan : le son s'arrête, puis reprend au retour
+  suspend() { this.hush(); if (this.ctx && this.ctx.state === 'running' && this.ctx.suspend) this.ctx.suspend(); }
+  resume() { if (this.ctx && this.ctx.state === 'suspended' && this.ctx.resume) this.ctx.resume(); }
 
   // ------------------------------------------------------------------ choix du morceau
   setScene(scene) {
@@ -654,15 +664,21 @@ export class AudioEngine {
     const set = LINES[group][action] || LINES[group].order;
     const line = set[Math.floor(Math.random() * set.length)];
     if (this.ctx && group === 'cavalry' && action === 'select' && Math.random() < 0.5) this.neigh(0.8, 0);
+    const pitch = Math.max(0.1, Math.min(2, ({ villager: 1.15, infantry: 0.78, archer: 1.0, cavalry: 0.88, siege: 0.7 }[group] || 0.9) + (Math.random() - 0.5) * 0.15));
+    const rate = action === 'attack' ? 1.2 : 1.08;
+    // application Android : synthèse vocale du téléphone
+    const droid = typeof window !== 'undefined' ? window.AndroidVoix : null;
+    if (droid) {
+      try { if (droid.pret()) { droid.dire(line, pitch, rate, Math.min(1, this._vv * vol)); return; } } catch { /* synthèse indisponible */ }
+    }
     if (typeof speechSynthesis === 'undefined' || !this.voices.length) {
       // pas de voix française : courte interjection synthétisée
       if (this.ctx) this.formant(this.ctx.currentTime + 0.01, group === 'villager' ? 210 : 140, group === 'villager' ? 260 : 120, 'E', action === 'attack' ? 'a' : 'i', 0.22, 0.2 * this._vv, { breath: 0.3 });
       return;
     }
     const u = new SpeechSynthesisUtterance(line);
-    const pitch = { villager: 1.15, infantry: 0.78, archer: 1.0, cavalry: 0.88, siege: 0.7 }[group];
-    u.pitch = Math.max(0.1, Math.min(2, pitch + (Math.random() - 0.5) * 0.15));
-    u.rate = action === 'attack' ? 1.2 : 1.08;
+    u.pitch = pitch;
+    u.rate = rate;
     u.volume = Math.min(1, this._vv * vol);
     u.lang = 'fr-FR';
     const idx = (group.length + (unitType || '').length) % this.voices.length;

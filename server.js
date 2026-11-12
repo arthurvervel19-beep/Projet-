@@ -4,6 +4,7 @@ import http from 'node:http';
 import { readFile, stat } from 'node:fs/promises';
 import { extname, join, normalize, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { networkInterfaces } from 'node:os';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), 'public');
 const PORT = Number(process.env.PORT) || 3000;
@@ -14,6 +15,7 @@ const TYPES = {
   '.js': 'text/javascript; charset=utf-8',
   '.css': 'text/css; charset=utf-8',
   '.json': 'application/json; charset=utf-8',
+  '.webmanifest': 'application/manifest+json; charset=utf-8',
   '.png': 'image/png',
   '.svg': 'image/svg+xml',
   '.ico': 'image/x-icon',
@@ -42,4 +44,10 @@ const server = http.createServer(async (req, res) => {
 
 server.listen(PORT, HOST, () => {
   console.log(`Aube des Royaumes est prêt : http://localhost:${PORT}`);
+  // adresses à ouvrir depuis un téléphone ou une tablette branchés sur le même Wi-Fi
+  const lan = Object.values(networkInterfaces()).flat().filter((i) => i && i.family === 'IPv4' && !i.internal).map((i) => i.address);
+  if (lan.length && HOST === '0.0.0.0') {
+    console.log('Sur un téléphone connecté au même Wi-Fi, ouvrez :');
+    for (const ip of lan) console.log(`  http://${ip}:${PORT}`);
+  }
 });

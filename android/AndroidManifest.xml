@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Application Android : le jeu est embarqué dans l'APK et fonctionne sans connexion. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="fr.aubedesroyaumes.jeu">
+
+    <!-- Seule autorisation, exigée par le composant d'affichage web pour charger des pages « https ».
+         Le jeu ne se connecte à rien : ses fichiers sont lus dans l'APK et toute autre adresse est refusée. -->
+    <uses-permission android:name="android.permission.INTERNET" />
+
+    <uses-feature android:glEsVersion="0x00030000" android:required="false" />
+    <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
+
+    <!-- nécessaire depuis Android 11 pour utiliser la synthèse vocale du téléphone (voix des unités) -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.TTS_SERVICE" />
+        </intent>
+    </queries>
+
+    <application
+        android:label="@string/app_name"
+        android:icon="@mipmap/ic_launcher"
+        android:theme="@style/Jeu"
+        android:allowBackup="false"
+        android:hardwareAccelerated="true"
+        android:isGame="true">
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:screenOrientation="sensorLandscape"
+            android:launchMode="singleTask"
+            android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboard|keyboardHidden|navigation|uiMode|density|fontScale">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>

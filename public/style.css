@@ -27,8 +27,8 @@
 }
 * { box-sizing: border-box; }
 html, body { margin: 0; height: 100%; overflow: hidden; background: #07090c; color: var(--text); font-family: var(--ui); font-size: 14px; user-select: none; -webkit-font-smoothing: antialiased; }
-canvas#game { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block; }
-#overlay { position: fixed; inset: 0; width: 100vw; height: 100vh; pointer-events: none; z-index: 1; }
+canvas#game { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
+#overlay { position: fixed; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 1; }
 .hidden { display: none !important; }
 .ico { width: 1.15em; height: 1.15em; vertical-align: -0.2em; flex: none; }
 .rimg { width: 1.35em; height: 1.35em; vertical-align: -0.3em; filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.6)); }
@@ -233,3 +233,116 @@ button.ghost { background: transparent; }
 #countdown .dot { width: 10px; height: 10px; border-radius: 50%; box-shadow: 0 0 8px currentColor; }
 @keyframes pulse { 50% { box-shadow: 0 0 22px rgba(255, 90, 70, 0.55); } }
 #messages { top: 64px; }
+
+#info .row.desc { font-size: 12px; }
+.help-touch { display: none; }
+
+/* ---------- tactile ---------- */
+html, body { overscroll-behavior: none; -webkit-user-select: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
+#minimap { touch-action: none; }
+#touchbar { position: fixed; right: calc(12px + env(safe-area-inset-right, 0px)); bottom: 224px; z-index: 6; display: flex; flex-direction: column; gap: 10px; }
+#touchbar .tb {
+  width: 50px; height: 50px; padding: 0; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: var(--gold);
+  background: var(--glass); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); border: 1px solid var(--line-strong); box-shadow: var(--shadow);
+}
+#touchbar .tb .ico { width: 24px; height: 24px; }
+#touchbar .tb.ok { color: #0d260b; background: linear-gradient(180deg, #c4f8b6, #55c046); border-color: #e4ffdc; box-shadow: 0 0 18px rgba(110, 230, 90, 0.55), var(--shadow); }
+#touchbar .tb.on { color: #1b1406; background: linear-gradient(180deg, #ffe4a0, #e2b25a); border-color: #fff0c0; }
+body.touch .help-touch { display: block; }
+body.touch .help-mouse { display: none; }
+body.touch .cmd .hk { display: none; }
+body.touch .cmd:hover { transform: none; border-color: rgba(232, 196, 120, 0.35); box-shadow: 0 3px 8px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.06); }
+body.touch .cmd:active { border-color: var(--gold-hi); box-shadow: 0 0 0 1px rgba(255, 230, 160, 0.4), 0 0 18px rgba(232, 196, 120, 0.45); }
+body.touch .queue .q:hover::after { content: none; }
+body.touch button, body.touch select { min-height: 36px; }
+
+/* écran d'invitation à tourner le téléphone */
+#rotate { display: none; position: fixed; inset: 0; z-index: 60; align-items: center; justify-content: center; text-align: center; background: #07090c; color: var(--gold); font-family: var(--title); letter-spacing: 1px; }
+#rotate svg { width: 84px; height: 84px; }
+#rotate p { color: var(--text); font-size: 17px; margin: 14px 24px 0; }
+@media (orientation: portrait) and (max-width: 640px) { body.touch #rotate { display: flex; } }
+
+/* ---------- petits écrans en paysage (téléphones) ---------- */
+@media (max-height: 560px) {
+  html, body { font-size: 12px; }
+  #topbar {
+    top: 5px; left: calc(6px + env(safe-area-inset-left, 0px)); right: calc(6px + env(safe-area-inset-right, 0px)); transform: none; width: auto; height: 38px;
+    gap: 4px; padding: 0 5px; border-radius: 10px;
+  }
+  #topbar .res { min-width: 0; height: 28px; gap: 4px; padding: 0 7px 0 3px; border-radius: 7px; }
+  #topbar .res img.ri { width: 19px; height: 19px; }
+  #topbar .res .pop-ico .ico { width: 16px; height: 16px; }
+  #topbar .res b { font-size: 13px; }
+  #topbar .res i { display: none; }
+  #age-label { flex: 0 1 auto; min-width: 0; margin: 0 2px 0 6px; font-size: 11px; letter-spacing: 0.5px; overflow: hidden; text-overflow: ellipsis; }
+  #clock, #speed, #music-btn { display: none; }
+  #idle-btn { height: 30px; min-height: 30px; padding: 0 8px; gap: 4px; }
+  #topbar .icon-btn { width: 36px; height: 30px; min-height: 30px; }
+  #messages, #countdown { top: 48px; }
+  #messages div { font-size: 12px; padding: 5px 11px; }
+  #countdown { right: calc(8px + env(safe-area-inset-right, 0px)); gap: 4px; }
+  #countdown .cd { padding: 4px 9px; font-size: 11px; }
+  #countdown .cd b { font-size: 13px; }
+
+  #bottom { left: calc(6px + env(safe-area-inset-left, 0px)); right: calc(6px + env(safe-area-inset-right, 0px)); bottom: 6px; height: 84px; gap: 6px; }
+  #minimap-wrap { width: 142px; padding: 4px; border-radius: 10px; }
+  #minimap-wrap::after { content: none; }
+  #minimap { width: 134px; height: 67px; }
+  #minimap-wrap { align-items: center; }
+  #info { flex: 0 1 250px; min-width: 150px; padding: 6px 9px; border-radius: 10px; overflow-y: auto; scrollbar-width: none; }
+  #info::-webkit-scrollbar, #commands::-webkit-scrollbar { display: none; }
+  #info.empty, #commands.empty { display: none; }
+  #info h3 { font-size: 13px; letter-spacing: 0.3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #info .head { gap: 8px; margin-bottom: 3px; }
+  #info .portrait { width: 36px; height: 36px; border-radius: 8px; }
+  #info .portrait.res .rimg { width: 26px; height: 26px; }
+  #info .row { display: none; margin: 3px 0 0; gap: 4px; font-size: 11px; flex-wrap: nowrap; overflow: hidden; white-space: nowrap; }
+  #info .row.stats, #info .row.keep { display: flex; }
+  #info .row.owner { display: none; }
+  #info:has(.queue) .row.stats, #info:has(.row.keep) .row.stats { display: none; }
+  .stat { padding: 1px 5px; gap: 3px; font-size: 11px; border-radius: 6px; }
+  .hpbar { height: 5px; margin: 3px 0 0; }
+  .queue { gap: 4px; margin-top: 4px; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
+  .queue .q { width: 30px; height: 30px; flex: none; border-radius: 6px; }
+  .queue .q .ico { width: 18px; height: 18px; }
+  .multi { gap: 3px; margin-top: 5px; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
+  .multi::-webkit-scrollbar { display: none; }
+  .multi .m { width: 40px; height: 40px; flex: none; border-radius: 7px; }
+  #commands {
+    flex: 1 1 0; width: auto; min-width: 0; display: flex; gap: 6px; padding: 7px; border-radius: 10px;
+    overflow-x: auto; overflow-y: hidden; scrollbar-width: none; overscroll-behavior: contain; touch-action: pan-x;
+  }
+  .cmd { flex: 0 0 68px; height: 68px; border-radius: 9px; }
+  .cmd .badge { font-size: 8px; }
+  #touchbar { bottom: 100px; right: calc(8px + env(safe-area-inset-right, 0px)); gap: 8px; }
+  #touchbar .tb { width: 46px; height: 46px; }
+  #tooltip { max-width: min(340px, 72vw); padding: 8px 11px; font-size: 12px; line-height: 1.4; }
+
+  #menu.overlay { padding: 0 calc(8px + env(safe-area-inset-right, 0px)) 0 calc(8px + env(safe-area-inset-left, 0px)); justify-content: center; }
+  .overlay .panel { max-width: 760px; width: 100%; padding: 12px 18px; border-radius: 14px; max-height: calc(100vh - 12px); max-height: calc(100dvh - 12px); }
+  #pause .panel, #end .panel { max-width: 520px; }
+  .crest, .overlay .sub, .credits { display: none; }
+  .overlay h1 { font-size: 24px; margin: 0; }
+  .overlay h2 { font-size: 22px; margin: 0 0 8px; }
+  .divider { margin-top: 8px; }
+  .overlay .form { grid-template-columns: repeat(4, 1fr); gap: 8px 10px; margin: 10px 0 12px; }
+  .audio-form { grid-template-columns: 1fr 1fr !important; }
+  .overlay label { gap: 4px; font-size: 10px; letter-spacing: 0.6px; }
+  .overlay label select, .overlay label input { font-size: 13px; padding: 6px 26px 6px 8px; }
+  .overlay label input[type=range] { padding: 0; margin: 10px 0; }
+  .civ-card { margin: 0 0 10px; padding: 8px; min-height: 0; gap: 10px; }
+  .civ-card img { width: 52px; height: 52px; }
+  .civ-card h4 { font-size: 14px; }
+  .civ-card p { font-size: 11.5px; line-height: 1.35; }
+  button.big { font-size: 15px; padding: 10px 30px; }
+  .overlay details { margin-top: 8px; }
+  .overlay .help { font-size: 12px; line-height: 1.5; }
+  #end-stats { font-size: 12px; overflow-x: auto; }
+  #end-stats td, #end-stats th { padding: 4px 7px; }
+  #end-stats th { font-size: 9px; }
+}
+@media (max-height: 560px) and (max-width: 700px) {
+  .overlay .form { grid-template-columns: repeat(3, 1fr); }
+  #info { flex-basis: 190px; }
+  #minimap-wrap { width: 122px; } #minimap { width: 114px; height: 57px; }
+}

@@ -21,6 +21,41 @@ npm start
 Ouvrez ensuite <http://localhost:3000> dans votre navigateur. Pour changer de port :
 `PORT=8080 npm start`.
 
+## Sur téléphone et tablette
+
+Le jeu se joue au doigt, en mode paysage : interface compacte, boutons larges, qualité
+graphique « Mobile » choisie automatiquement (elle s'allège toute seule si le téléphone peine).
+
+**Application Android (hors connexion)** : le script `android/build-apk.sh` fabrique
+`android/build/aube-des-royaumes.apk`. Copiez ce fichier sur le téléphone, ouvrez-le et
+acceptez l'installation (Android demande d'autoriser l'installation depuis cette source).
+Le jeu est entièrement contenu dans l'application : il ne télécharge rien et ne se connecte
+à rien. Android 7 ou plus récent.
+
+```bash
+bash android/build-apk.sh
+```
+
+Le script demande un JDK 17 ou plus récent, `curl`, `zip` et `unzip` ; il télécharge une fois
+les outils Android nécessaires (vérifiés par empreinte) dans `android/.cache`. La clé de
+signature est créée sur la machine et n'est pas enregistrée dans le dépôt : pour installer
+une version fabriquée sur une autre machine, désinstallez d'abord l'ancienne.
+
+**Sans installer d'application** : lancez le jeu sur l'ordinateur (`npm start`). Le terminal
+affiche une adresse du type `http://192.168.1.20:3000` : ouvrez-la dans le navigateur du
+téléphone, branché sur le même Wi-Fi. Fonctionne aussi sur iPhone et iPad.
+
+| Geste | Action |
+|---|---|
+| Toucher une unité ou un bâtiment | Sélectionner (deux fois : toutes les unités du même type) |
+| Toucher le sol, une ressource, un chantier, un ennemi | Ordre aux unités sélectionnées : aller, récolter, construire, attaquer |
+| Glisser un doigt | Déplacer la vue |
+| Pincer à deux doigts | Zoomer |
+| Appui long puis glisser | Sélectionner une zone |
+| Boutons ronds à droite | Annuler ou désélectionner, sélection par zone, toute l'armée |
+| Construire | Choisir le bâtiment, toucher ou glisser pour le placer, valider avec le bouton vert ; pour un mur, glisser le long du tracé |
+| Touche « retour » d'Android | Annuler, puis pause ; quitte depuis le menu |
+
 ## Contenu
 
 - **Rendu 3D temps réel (WebGL, Three.js)** : lumière du soleil et ombres douces, occlusion
@@ -41,8 +76,8 @@ Ouvrez ensuite <http://localhost:3000> dans votre navigateur. Pour changer de po
   fente, coups de lance, tir à l'arc (bander, décocher), visée à l'épaule, recul des armes
   à feu, travail des villageois, chute des morts. Les petits détails ne sont dessinés que de
   près, et les unités hors de l'écran ne sont pas animées.
-- **4 qualités graphiques** : Ultra, Équilibrée, Performance (3D) et Classique (2D, utilisée
-  automatiquement si WebGL 2 n'est pas disponible).
+- **5 qualités graphiques** : Ultra, Équilibrée, Mobile, Performance (3D) et Classique (2D,
+  utilisée automatiquement si WebGL 2 n'est pas disponible).
 - **6 civilisations** jouables, chacune avec son architecture, l'apparence de ses unités,
   un bonus, une unité unique (formée à la forteresse) et des gammes musicales propres :
 
@@ -129,8 +164,10 @@ public/js/icons.js   icônes vectorielles de l'interface
 public/js/audio.js   musique rock / électro, voix et bruitages (Web Audio API)
 public/vendor/       Three.js et modules de post-traitement (licence MIT)
 public/fonts/        polices Cinzel et Inter (licence SIL OFL)
-public/js/ui.js      souris, clavier, interface
+public/js/ui.js      souris, clavier, écran tactile, interface
 public/js/main.js    menu et boucle de jeu
+public/manifest.webmanifest, public/icons/  icône et réglages d'installation sur l'écran d'accueil
+android/             application Android : manifeste, activité WebView, icônes, script de fabrication
 test/                tests (node --test)
 ```
 

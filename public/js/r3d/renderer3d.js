@@ -47,6 +47,8 @@ const mat4 = (x, y, z, rx = 0, ry = 0, rz = 0, sx = 1, sy = 1, sz = 1) => new TH
 export const QUALITY = {
   high: { pixelRatio: 1.75, shadow: 4096, grass: 5, res: 3, tex: 'high', post: true, ao: 12 },
   medium: { pixelRatio: 1.25, shadow: 2048, grass: 2, res: 2, tex: 'high', post: true, ao: 0 },
+  // téléphones : ombres légères, pas de post-traitement, résolution plafonnée
+  mobile: { pixelRatio: 1.5, shadow: 1024, grass: 1, res: 2, tex: 'low', post: false, ao: 0, hardShadow: true, shadowEvery: 2, adaptive: true },
   low: { pixelRatio: 1, shadow: 0, grass: 0, res: 2, tex: 'low', post: false, ao: 0 },
 };
 
@@ -133,7 +135,7 @@ export class Renderer3D {
     this.canvas = canvas;
     this.game = game;
     this.me = me;
-    this.q = QUALITY[opts.quality || 'high'];
+    this.q = QUALITY[opts.quality] || QUALITY.high;
     this.cam = { zoom: 1 };
     this.camState = { tx: 10, tz: 10, dist: 34, targetDist: 34, pitch: 0.96, yaw: Math.PI / 4 };
     this.time = 0;
@@ -145,7 +147,7 @@ export class Renderer3D {
     r.toneMapping = THREE.ACESFilmicToneMapping;
     r.toneMappingExposure = 1.08;
     r.shadowMap.enabled = this.q.shadow > 0;
-    r.shadowMap.type = THREE.PCFSoftShadowMap;
+    r.shadowMap.type = this.q.hardShadow ? THREE.PCFShadowMap : THREE.PCFSoftShadowMap;
 
     // calque 2D (barres de vie, cadre de sélection)
     this.overlay = document.getElementById('overlay') || (() => {
@@ -526,10 +528,13 @@ export class Renderer3D {
       const sink = Math.max(0, fx.t - 6) * 0.08;
       this.emitUnit(null, fx.type, fx.owner, fx.x, this.heightAt(fx.x, fx.y) - sink, fx.y, fx._st.yaw, fx._st, Math.min(1, fx.t + 0.01));
     }
+    // n'envoie au processeur graphique que les instances réellement utilisées
     for (const s of this.parts.values()) {
       s.mesh.count = s.n;
-      s.mesh.instanceMatrix.needsUpdate = true;
-      if (s.mesh.instanceColor) s.mesh.instanceColor.needsUpdate = true;
+      if (!s.n) continue;
+      const im = s.mesh.instanceMatrix, ic = s.mesh.instanceColor;
+      im.clearUpdateRanges(); im.addUpdateRange(0, s.n * 16); im.needsUpdate = true;
+      if (ic) { ic.clearUpdateRanges(); ic.addUpdateRange(0, s.n * 3); ic.needsUpdate = true; }
     }
   }
 
@@ -1122,7 +1127,7 @@ export class Renderer3D {
   // ------------------------------------------------------------------ caméra
   resize() {
     this.w = window.innerWidth; this.h = window.innerHeight;
-    const pr = Math.min(window.devicePixelRatio || 1, this.q.pixelRatio);
+    const pr = Math.min(window.devicePixelRatio || 1, this.pixelCap || this.q.pixelRatio);
     this.renderer.setPixelRatio(pr);
     this.renderer.setSize(this.w, this.h, false);
     if (this.composer) { this.composer.setPixelRatio(pr); this.composer.setSize(this.w, this.h); }
@@ -1279,8 +1284,35 @@ export class Renderer3D {
     this.syncSelection(ui);
     this.smoke.update(dt); this.fire.update(dt); this.dust.update(dt);
     this.M.embers.emissiveIntensity = 1.8 + Math.sin(this.time * 7) * 0.4 + Math.sin(this.time * 13) * 0.2;
+    if (this.q.shadowEvery && this.renderer.shadowMap.enabled) {
+      // sur téléphone, les ombres ne sont recalculées qu'une image sur deux
+      this.renderer.shadowMap.autoUpdate = false;
+      this.frame = (this.frame || 0) + 1;
+      if (this.frame % this.q.shadowEvery === 1) this.renderer.shadowMap.needsUpdate = true;
+    }
     if (this.composer) this.composer.render(); else this.renderer.render(this.scene, this.camera);
     this.drawOverlay(alpha, ui);
+    if (this.q.adaptive) this.adapt(dt);
+  }
+
+  // Qualité adaptative : si l'affichage reste sous 24 images par seconde, on allège le rendu
+  // (résolution, puis ombres) pour que le jeu reste fluide sur les téléphones modestes.
+  adapt(dt) {
+    const a = this.adaptState || (this.adaptState = { t: 0, n: 0, level: 0, wait: 4 });
+    if (a.level >= 2) return;
+    if (a.wait > 0) { a.wait -= dt; return; }
+    a.t += dt; a.n++;
+    if (a.t < 5) return;
+    const fps = a.n / a.t;
+    a.t = 0; a.n = 0;
+    if (fps >= 24) return;
+    a.level++; a.wait = 2;
+    if (a.level === 1) { this.pixelCap = 1; this.resize(); } else {
+      this.sun.castShadow = false;
+      this.renderer.shadowMap.enabled = false;
+      this.scene.traverse((o) => { if (o.material) for (const m of Array.isArray(o.material) ? o.material : [o.material]) m.needsUpdate = true; });
+    }
+    if (this.onAdapt) this.onAdapt(a.level);
   }
 
   drawOverlay(alpha, ui) {
@@ -1496,9 +1528,16 @@ export class Renderer3D {
   }
 }
 
+let webglOk = null;
 export function webglAvailable() {
+  if (webglOk !== null) return webglOk;
   try {
     const c = document.createElement('canvas');
-    return !!(window.WebGL2RenderingContext && c.getContext('webgl2'));
-  } catch { return false; }
+    const gl = window.WebGL2RenderingContext && c.getContext('webgl2');
+    webglOk = !!gl;
+    // libère tout de suite ce contexte d'essai (les téléphones en acceptent peu)
+    const lose = gl && gl.getExtension('WEBGL_lose_context');
+    if (lose) lose.loseContext();
+  } catch { webglOk = false; }
+  return webglOk;
 }

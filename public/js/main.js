@@ -9,10 +9,22 @@ import { Renderer3D, webglAvailable } from './r3d/renderer3d.js';
 import { resIconURL, icon } from './icons.js';
 
 const $ = (id) => document.getElementById(id);
+window.__adrReady = true; // le jeu a démarré (voir le message de secours dans index.html)
 const audio = new AudioEngine();
 window.__audio = audio;
 let state = null;
 let demo = null;
+
+// appareil tactile (téléphone, tablette) : interface et réglages adaptés ; « ?tactile » force ce mode
+const isTouch = new URLSearchParams(location.search).has('tactile') || !!(window.matchMedia && window.matchMedia('(pointer: coarse)').matches);
+if (isTouch) document.body.classList.add('touch');
+const stored = (k) => { try { return localStorage.getItem(k); } catch { return null; } };
+const store = (k, v) => { try { localStorage.setItem(k, v); } catch { /* stockage indisponible */ } };
+{
+  const q = stored('adr_quality');
+  $('opt-quality').value = q && [...$('opt-quality').options].some((o) => o.value === q) ? q : isTouch ? 'mobile' : 'high';
+  if (isTouch) $('opt-size').value = '72';
+}
 
 function quality() {
   const q = $('opt-quality').value;
@@ -70,8 +82,8 @@ function startDemo() {
   const game = new Game({ seed: Math.floor(Math.random() * 1e9), size: 72, players: 2, humanPlayer: -1, civs: [dc[0], dc[1]] });
   for (const p of game.players) { p.explored.fill(1); p.visible.fill(1); }
   const ais = game.players.map((p) => new AI(game, p.id, 'difficile'));
-  for (let i = 0; i < 20 * 200; i++) { ais.forEach((a) => a.update(TICK)); game.update(TICK); }
-  const q = quality() === '2d' ? '2d' : 'medium';
+  for (let i = 0; i < 20 * (isTouch ? 70 : 200); i++) { ais.forEach((a) => a.update(TICK)); game.update(TICK); }
+  const q = quality() === '2d' ? '2d' : isTouch || quality() === 'mobile' || quality() === 'low' ? 'mobile' : 'medium';
   const renderer = makeRenderer(game, 0, q, freshCanvas('game'));
   const ui = { selected: new Set(), marker: null, placing: null, dragBox: null };
   demo = { game, renderer, ais, ui, t: 0, last: performance.now(), stop: false, a: game.players[0] };
@@ -110,9 +122,21 @@ function stopDemo() {
 }
 
 // ------------------------------------------------------------------ partie
+// plein écran en paysage sur téléphone (inutile dans l'application Android, déjà en plein écran)
+function goFullscreen() {
+  if (!isTouch || window.AndroidApp) return;
+  try {
+    const el = document.documentElement;
+    const p = el.requestFullscreen ? el.requestFullscreen({ navigationUI: 'hide' }) : null;
+    const lock = () => { try { const o = screen.orientation; if (o && o.lock) o.lock('landscape').catch(() => {}); } catch { /* verrouillage refusé */ } };
+    if (p && p.then) p.then(lock).catch(() => {}); else lock();
+  } catch { /* plein écran refusé */ }
+}
+
 function start() {
   audio.init();
   audio.sfxPlay('click');
+  goFullscreen();
   const seedInput = $('opt-seed').value;
   const seed = seedInput ? +seedInput : Math.floor(Math.random() * 1e9);
   const size = +$('opt-size').value;
@@ -131,6 +155,7 @@ function start() {
     game.sound = true;
     const renderer = makeRenderer(game, 0, q, freshCanvas('game'));
     const ui = new UI(game, renderer, 0, audio);
+    renderer.onAdapt = () => ui.msg('Affichage allégé pour garder un jeu fluide.');
     const ai = new AI(game, 1, difficulty);
     const me = game.players[0];
     renderer.centerOn(me.startX + 1, me.startY + 1);
@@ -220,7 +245,9 @@ $('quit-btn').addEventListener('click', () => {
   state.game.players[0].defeated = true;
   state.game.winner = 1;
 });
-$('speed').addEventListener('change', (e) => { if (state) state.speed = +e.target.value; e.target.blur(); });
+const setSpeed = (v) => { $('speed').value = v; $('speed-pause').value = v; if (state) state.speed = +v; };
+$('speed').addEventListener('change', (e) => { setSpeed(e.target.value); e.target.blur(); });
+$('speed-pause').addEventListener('change', (e) => setSpeed(e.target.value));
 $('music-btn').addEventListener('click', (e) => { audio.init(); audio.toggleMute(); updateMusicBtn(); e.currentTarget.blur(); });
 $('vol-music').value = audio.musicVol;
 $('vol-sfx').value = audio.sfxVol;
@@ -228,9 +255,24 @@ $('vol-voice').value = audio.voiceVol;
 $('vol-music').addEventListener('input', (e) => audio.setMusicVolume(+e.target.value));
 $('vol-sfx').addEventListener('input', (e) => { audio.setSfxVolume(+e.target.value); audio.sfxPlay('select'); });
 $('vol-voice').addEventListener('input', (e) => { audio.setVoiceVolume(+e.target.value); audio.voice('villager', 'select', 1); });
-$('opt-quality').addEventListener('change', () => { stopDemo(); startDemo(); });
+$('opt-quality').addEventListener('change', () => { store('adr_quality', $('opt-quality').value); stopDemo(); startDemo(); });
 updateMusicBtn();
 // la musique démarre au premier geste de l'utilisateur (règle des navigateurs)
 window.addEventListener('pointerdown', () => { audio.init(); if (!state) audio.setScene('menu'); }, { once: true });
 
-startDemo();
+// application en arrière-plan : la partie se met en pause et le son s'arrête
+window.__appPause = () => { if (state && !state.ended && !state.paused && state.game.winner === null) setPaused(true); audio.suspend(); };
+window.__appResume = () => audio.resume();
+document.addEventListener('visibilitychange', () => { if (document.hidden) window.__appPause(); else window.__appResume(); });
+// touche « retour » d'Android : annuler, puis pause ; « exit » quitte l'application
+window.__androidBack = () => {
+  if (!state || !$('menu').classList.contains('hidden')) return 'exit';
+  if (!$('end').classList.contains('hidden')) { $('again-btn').click(); return 'ok'; }
+  if (state.paused) { setPaused(false); return 'ok'; }
+  if (state.ui.cancelAll()) { state.ui.hudTimer = 0; return 'ok'; }
+  setPaused(true);
+  return 'ok';
+};
+
+// sur téléphone, le menu s'affiche avant que la démonstration ne se construise
+if (isTouch) requestAnimationFrame(() => setTimeout(startDemo, 0)); else startDemo();
