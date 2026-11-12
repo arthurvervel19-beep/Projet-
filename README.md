@@ -58,11 +58,17 @@ téléphone, branché sur le même Wi-Fi. Fonctionne aussi sur iPhone et iPad.
 
 ## Contenu
 
-- **Rendu 3D temps réel (WebGL, Three.js)** : lumière du soleil et ombres douces, occlusion
-  ambiante (GTAO), étalonnage colorimétrique, anticrénelage. Terrain en relief avec mélange
-  de sols (herbe, terre, sable, sous-bois), eau animée avec écume et reflets, herbe et arbres
-  qui ondulent au vent, ombres de nuages, brouillard de guerre adouci. Particules : fumée des
-  cheminées, forge, incendies des bâtiments endommagés, poussière, explosions.
+- **Rendu 3D temps réel (WebGL, Three.js)** : lumière dorée et ombres douces, occlusion
+  ambiante (GTAO), halo lumineux (bloom), léger flou de profondeur, brume de distance,
+  étalonnage colorimétrique, anticrénelage. Liseré de lumière sur les unités et les
+  feuillages, ombres de contact sous les unités et au pied des bâtiments, patine des murs
+  (mousse, salissures). Particules : fumée des cheminées, forge, incendies, poussière, explosions.
+- **Paysage vivant** : cinq essences d'arbres (chênes, hêtres, bouleaux, sapins) regroupées en
+  bois de feuillus ou de résineux, feuillage détaillé qui ondule au vent, prairies fleuries
+  (marguerites, boutons d'or, coquelicots, campanules), fougères et souches en sous-bois,
+  roseaux et nénuphars sur les rives, galets, vols d'oiseaux. Terrain en relief avec mélange
+  de sols et micro-relief, eau turquoise avec écume, reflets du fond et scintillement du soleil,
+  ombres de nuages, brouillard de guerre adouci.
 - **Modèles 3D procéduraux** texturés (pierre, colombages, tuiles, ardoise, chaume, planches)
   avec bandes et bannières aux couleurs du joueur. Portraits 3D dans l'interface.
 - **Unités détaillées** : squelette articulé (épaules, coudes, poignets, hanches, genoux,
@@ -157,6 +163,7 @@ public/js/game.js    moteur de simulation (sans DOM, testable dans Node)
 public/js/ai.js      intelligence artificielle
 public/js/r3d/       rendu 3D : moteur, shaders, modèles, styles des civilisations, textures
 public/js/r3d/units.js  unités : anatomie, équipements, squelette et animations
+public/js/r3d/nature.js  arbres, fleurs, fougères, roseaux, galets, nénuphars, oiseaux
 public/js/render.js  rendu 2D « classique » (repli sans WebGL)
 public/js/terrain.js champs du terrain et couleurs (minicarte, rendu 2D)
 public/js/sprites.js sprites du rendu 2D
@@ -188,7 +195,8 @@ le fonctionnement des portes (passage, blocage de l'ennemi, verrouillage, brèch
 
 ## Performances
 
-La qualité **Ultra** est prévue pour une carte graphique récente. Sur un ordinateur portable
+Seuls les arbres, l'herbe et le décor visibles à l'écran sont dessinés, ce qui allège
+beaucoup l'affichage. La qualité **Ultra** est prévue pour une carte graphique récente. Sur un ordinateur portable
 ou une carte graphique intégrée, choisissez **Équilibrée** ou **Performance** dans le menu.
 
 ## Crédits

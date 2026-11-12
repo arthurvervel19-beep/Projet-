@@ -18,11 +18,18 @@ export function makeWorldUniforms(fogTex, w, h) {
     uFog: { value: fogTex },
     uMapSize: { value: new THREE.Vector2(w, h) },
     uTime: { value: 0 },
+    // brume de distance : x = début, y = densité, z = intensité
+    uHaze: { value: new THREE.Vector3(30, 0.012, 0.0) },
+    uHazeColor: { value: new THREE.Color(0.62, 0.74, 0.9) },
   };
 }
 
 const FOG_FRAGMENT = /* glsl */`
   {
+    // brume bleutée qui s'épaissit avec la distance (profondeur de la scène)
+    float hzd = length(vTW - cameraPosition);
+    float hz = (1.0 - exp(-max(0.0, hzd - uHaze.x) * uHaze.y)) * uHaze.z;
+    gl_FragColor.rgb = mix(gl_FragColor.rgb, uHazeColor, hz);
     vec2 fuv = vTW.xz / uMapSize;
     float fv = texture2D(uFog, fuv).r;
     // ombres de nuages
@@ -44,6 +51,9 @@ const FOG_FRAGMENT = /* glsl */`
  *  - wind : amplitude de balancement (végétation)
  *  - banner : ondulation de drapeau
  *  - terrain / water : shaders spécialisés
+ *  - ground : patine des bâtiments (assombrissement au pied, mousse, variations de teinte)
+ *  - rim : liseré lumineux en contre-jour (unités, feuillages)
+ *  - detail : micro-relief du sol
  */
 export function patchWorld(mat, U, opts = {}) {
   const key = JSON.stringify(opts);
@@ -55,6 +65,7 @@ export function patchWorld(mat, U, opts = {}) {
       varying vec3 vTW;
       uniform float uTime;
       ${opts.terrain ? 'varying vec3 vTN;' : ''}
+      ${opts.ground ? 'varying float vBaseY; varying float vUpN;' : ''}
     `);
     if (opts.wind) {
       vs = vs.replace('#include <begin_vertex>', `#include <begin_vertex>
@@ -70,6 +81,11 @@ export function patchWorld(mat, U, opts = {}) {
           transformed.x += s * ${opts.wind.toFixed(4)} * hh * hh;
           transformed.z += cos(uTime * 1.25 + ph) * ${(opts.wind * 0.6).toFixed(4)} * hh * hh;
         }`);
+    }
+    if (opts.flap) {
+      // battement d'ailes (oiseaux) : les extrémités montent et descendent
+      vs = vs.replace('#include <begin_vertex>', `#include <begin_vertex>
+        transformed.y += abs(position.x) * sin(uTime * 12.0 + float(gl_InstanceID) * 1.7) * 0.6;`);
     }
     if (opts.banner) {
       vs = vs.replace('#include <begin_vertex>', `#include <begin_vertex>
@@ -87,22 +103,34 @@ export function patchWorld(mat, U, opts = {}) {
         #endif
         vTW = (modelMatrix * wp4).xyz;
         ${opts.terrain ? 'vTN = normalize(mat3(modelMatrix) * objectNormal);' : ''}
+        ${opts.ground ? 'vBaseY = modelMatrix[3][1]; vUpN = normalize(mat3(modelMatrix) * objectNormal).y;' : ''}
       }`);
     fs = fs.replace('#include <common>', `#include <common>
       varying vec3 vTW;
       uniform sampler2D uFog;
       uniform vec2 uMapSize;
       uniform float uTime;
+      uniform vec3 uHaze;
+      uniform vec3 uHazeColor;
+      ${opts.ground ? 'varying float vBaseY; varying float vUpN;' : ''}
       ${NOISE_GLSL}
       ${opts.terrain ? TERRAIN_DECL : ''}
       ${opts.water ? WATER_DECL : ''}
     `);
     if (opts.terrain) fs = fs.replace('#include <map_fragment>', TERRAIN_FRAGMENT);
+    if (opts.terrain && opts.detail) fs = fs.replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
+        ${TERRAIN_NORMAL}`);
     if (opts.water) {
       fs = fs.replace('#include <map_fragment>', WATER_COLOR);
       fs = fs.replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
         ${WATER_NORMAL}`);
+      fs = fs.replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
+        ${WATER_SPARKLE}`);
     }
+    if (opts.ground) fs = fs.replace('#include <map_fragment>', `#include <map_fragment>
+        ${GROUND_FRAGMENT}`);
+    if (opts.rim) fs = fs.replace('#include <opaque_fragment>', `${RIM_FRAGMENT.replace('RIM_K', opts.rim.toFixed(3))}
+        #include <opaque_fragment>`);
     if (opts.fog !== false) fs = fs.replace('#include <dithering_fragment>', `#include <dithering_fragment>
       ${FOG_FRAGMENT}`);
     shader.vertexShader = vs;
@@ -112,6 +140,37 @@ export function patchWorld(mat, U, opts = {}) {
   mat.needsUpdate = true;
   return mat;
 }
+
+// ------------------------------------------------------------------ bâtiments et unités
+// Patine : les murs sont plus sombres au pied, la mousse gagne les bases humides,
+// et la teinte varie légèrement d'une pierre ou d'une tuile à l'autre.
+const GROUND_FRAGMENT = /* glsl */`
+  {
+    float gh = vTW.y - vBaseY;
+    float wn = fbm(vTW.xz * 2.3 + vTW.y * 3.1);
+    diffuseColor.rgb *= 0.9 + 0.2 * wn;
+    float streak = vnoise(vec2(vTW.x * 5.0 + vTW.z * 5.0, vTW.y * 0.6));
+    diffuseColor.rgb *= mix(1.0, 0.86, smoothstep(0.55, 0.9, streak) * smoothstep(0.2, 1.2, gh));
+    // seuls les murs sont concernés : les sols, cours et champs gardent leur teinte
+    float wall = 1.0 - smoothstep(0.45, 0.8, vUpN);
+    float mossK = (1.0 - smoothstep(0.02, 0.5, gh)) * smoothstep(0.38, 0.7, fbm(vTW.xz * 3.3 + 17.0)) * 0.5 * wall;
+    diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.2, 0.26, 0.1), mossK);
+    diffuseColor.rgb *= mix(1.0, mix(0.62, 1.0, smoothstep(-0.05, 0.42, gh)), wall);
+  }
+`;
+
+// Liseré lumineux : la lumière du soleil accroche le contour des formes en contre-jour.
+const RIM_FRAGMENT = /* glsl */`
+  {
+    float fr = pow(1.0 - clamp(dot(normalize(vViewPosition), normal), 0.0, 1.0), 2.4);
+    #if NUM_DIR_LIGHTS > 0
+      float sunF = clamp(dot(normal, directionalLights[0].direction) * 0.5 + 0.5, 0.0, 1.0);
+    #else
+      float sunF = 1.0;
+    #endif
+    outgoingLight += fr * (0.3 + 0.7 * sunF) * RIM_K * vec3(1.0, 0.92, 0.78) * (0.35 + diffuseColor.rgb);
+  }
+`;
 
 // ------------------------------------------------------------------ terrain
 const TERRAIN_DECL = /* glsl */`
@@ -155,6 +214,19 @@ const TERRAIN_FRAGMENT = /* glsl */`
   }
 `;
 
+// micro-relief du sol : mottes, touffes et cailloux accrochent la lumière
+const TERRAIN_NORMAL = /* glsl */`
+  {
+    vec2 q = vTW.xz;
+    float e = 0.06;
+    float h0 = fbm(q * 2.4) + vnoise(q * 8.5) * 0.4;
+    float hx = fbm((q + vec2(e, 0.0)) * 2.4) + vnoise((q + vec2(e, 0.0)) * 8.5) * 0.4;
+    float hy = fbm((q + vec2(0.0, e)) * 2.4) + vnoise((q + vec2(0.0, e)) * 8.5) * 0.4;
+    vec2 gr = vec2(hx - h0, hy - h0) / e * 0.1;
+    normal = normalize(normal + (viewMatrix * vec4(-gr.x, 0.0, -gr.y, 0.0)).xyz);
+  }
+`;
+
 // ------------------------------------------------------------------ eau
 const WATER_DECL = /* glsl */`
   uniform sampler2D uDepth;
@@ -174,9 +246,12 @@ const WATER_DECL = /* glsl */`
 const WATER_COLOR = /* glsl */`
   {
     float d = wdepth();
-    vec3 shallow = vec3(0.18, 0.52, 0.55);
-    vec3 deep = vec3(0.03, 0.17, 0.3);
+    vec3 shallow = vec3(0.16, 0.6, 0.6);
+    vec3 deep = vec3(0.02, 0.15, 0.3);
     vec3 c = mix(shallow, deep, smoothstep(0.0, 0.8, d));
+    // reflets de lumière sur le fond, près du bord
+    float caus = vnoise(vTW.xz * 3.1 + uTime * 0.6) * vnoise(vTW.xz * 4.3 - uTime * 0.45 + 9.0);
+    c += vec3(0.5, 0.65, 0.5) * smoothstep(0.25, 0.6, caus) * smoothstep(0.55, 0.05, d) * 0.22;
     // écume de rivage animée
     float band = sin(d * 38.0 - uTime * 2.2 + vnoise(vTW.xz * 2.0) * 6.0);
     float foam = smoothstep(0.32, 0.0, d) * smoothstep(0.2, 0.9, band) * (0.5 + 0.5 * vnoise(vTW.xz * 6.0 + uTime));
@@ -184,6 +259,18 @@ const WATER_COLOR = /* glsl */`
     c = mix(c, vec3(0.92, 0.96, 0.95), foam * 0.8);
     diffuseColor.rgb = c;
     diffuseColor.a = mix(0.55, 0.94, smoothstep(0.0, 0.5, d)) + foam * 0.3;
+  }
+`;
+
+// scintillement du soleil sur les vagues
+const WATER_SPARKLE = /* glsl */`
+  {
+    float sd = wdepth();
+    float s1 = vnoise(vTW.xz * 15.0 + vec2(uTime * 1.1, uTime * 0.6));
+    float s2 = vnoise(vTW.xz * 24.0 - vec2(uTime * 0.8, -uTime * 0.9) + 4.0);
+    float band = vnoise(vTW.xz * 0.9 + uTime * 0.12);
+    float sp = smoothstep(0.6, 0.7, s1 * s2) * smoothstep(0.35, 0.75, band) * smoothstep(0.03, 0.3, sd);
+    totalEmissiveRadiance += vec3(1.0, 0.96, 0.86) * sp * 1.5;
   }
 `;
 

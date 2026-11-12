@@ -6,14 +6,16 @@ import { RenderPass } from '../../vendor/jsm/postprocessing/RenderPass.js';
 import { ShaderPass } from '../../vendor/jsm/postprocessing/ShaderPass.js';
 import { OutputPass } from '../../vendor/jsm/postprocessing/OutputPass.js';
 import { GTAOPass } from '../../vendor/jsm/postprocessing/GTAOPass.js';
+import { UnrealBloomPass } from '../../vendor/jsm/postprocessing/UnrealBloomPass.js';
 import { BUILDINGS, UNITS, TERRAIN } from '../config.js';
 import { TerrainPainter } from '../terrain.js';
 import { buildTextures } from './textures.js';
 import { makeWorldUniforms, patchWorld } from './shading.js';
 import {
-  buildingModel, palisadeModel, stoneWallModel, gateModel, scaffoldModel, treeGeometries,
+  buildingModel, palisadeModel, stoneWallModel, gateModel, scaffoldModel,
   rockGeometries, bushGeometries, sheepGeometries, grassTuftGeometry, arrowGeometry, makeBanner, boxGeo,
 } from './models.js';
+import { treeKinds, decorGeometries, birdGeometry, leafCardCanvas } from './nature.js';
 import { unitGeometries, unitParts, SKIN_TONES, CIV_SKINS, CIV_HAIR, BONES, poseUnit, unitTop } from './units.js';
 import { civBuildingModel, civWallMaterial } from './civstyles.js';
 import { extraBuildingModel, EXTRA_TYPES } from './extraModels.js';
@@ -41,20 +43,31 @@ const tmpV = new THREE.Vector3(), tmpS = new THREE.Vector3(1, 1, 1), tmpC = new 
 const UP = new THREE.Vector3(0, 1, 0);
 
 function hash(a, b) { let h = (a * 374761393 + b * 668265263) | 0; h = (h ^ (h >>> 13)) * 1274126177; return ((h ^ (h >>> 16)) >>> 0) / 4294967296; }
+// bruit lissé (zones de prairies fleuries, bois de feuillus ou de résineux)
+function vnoise2(x, y) {
+  const ix = Math.floor(x), iy = Math.floor(y), fx = x - ix, fy = y - iy;
+  const u = fx * fx * (3 - 2 * fx), v = fy * fy * (3 - 2 * fy);
+  const a = hash(ix, iy), b = hash(ix + 1, iy), c = hash(ix, iy + 1), d = hash(ix + 1, iy + 1);
+  return a + (b - a) * u + (c - a) * v + (a - b - c + d) * u * v;
+}
+const SCATTER_CHUNK = 12; // côté, en cases, des carreaux d'herbe et de décor
 const lerpAngle = (a, b, t) => { let d = b - a; while (d > Math.PI) d -= Math.PI * 2; while (d < -Math.PI) d += Math.PI * 2; return a + d * t; };
 const mat4 = (x, y, z, rx = 0, ry = 0, rz = 0, sx = 1, sy = 1, sz = 1) => new THREE.Matrix4().compose(new THREE.Vector3(x, y, z), new THREE.Quaternion().setFromEuler(new THREE.Euler(rx, ry, rz)), new THREE.Vector3(sx, sy, sz));
 
 export const QUALITY = {
-  high: { pixelRatio: 1.75, shadow: 4096, grass: 5, res: 3, tex: 'high', post: true, ao: 12 },
-  medium: { pixelRatio: 1.25, shadow: 2048, grass: 2, res: 2, tex: 'high', post: true, ao: 0 },
+  // bloom : halo lumineux ; tilt : flou de profondeur ; detail : micro-relief du sol ;
+  // cards : feuillage détaillé ; decor : densité des fleurs, fougères, roseaux, galets
+  high: { pixelRatio: 1.75, shadow: 4096, grass: 5, res: 3, tex: 'high', post: true, ao: 12, bloom: 0.34, tilt: 1, detail: true, cards: true, decor: 1 },
+  medium: { pixelRatio: 1.25, shadow: 2048, grass: 2, res: 2, tex: 'high', post: true, ao: 0, bloom: 0.3, tilt: 0, detail: true, cards: true, decor: 0.55 },
   // téléphones : ombres légères, pas de post-traitement, résolution plafonnée
-  mobile: { pixelRatio: 1.5, shadow: 1024, grass: 1, res: 2, tex: 'low', post: false, ao: 0, hardShadow: true, shadowEvery: 2, adaptive: true },
-  low: { pixelRatio: 1, shadow: 0, grass: 0, res: 2, tex: 'low', post: false, ao: 0 },
+  mobile: { pixelRatio: 1.5, shadow: 1024, grass: 1, res: 2, tex: 'low', post: false, ao: 0, hardShadow: true, shadowEvery: 2, adaptive: true, decor: 0.25 },
+  low: { pixelRatio: 1, shadow: 0, grass: 0, res: 2, tex: 'low', post: false, ao: 0, decor: 0 },
 };
 
-// étalonnage final (espace linéaire, avant le tone mapping)
+// étalonnage final (espace linéaire, avant le tone mapping) : saturation, contraste,
+// ombres légèrement bleutées, hautes lumières dorées, vignettage
 const GradeShader = {
-  uniforms: { tDiffuse: { value: null }, uSat: { value: 1.02 }, uWarm: { value: new THREE.Vector3(1.05, 1.0, 0.93) }, uVig: { value: 0.32 }, uContrast: { value: 1.06 } },
+  uniforms: { tDiffuse: { value: null }, uSat: { value: 1.1 }, uWarm: { value: new THREE.Vector3(1.04, 1.0, 0.95) }, uVig: { value: 0.36 }, uContrast: { value: 1.08 } },
   vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
   fragmentShader: `uniform sampler2D tDiffuse; uniform float uSat, uVig, uContrast; uniform vec3 uWarm; varying vec2 vUv;
     void main(){
@@ -63,8 +76,33 @@ const GradeShader = {
       float l = dot(col, vec3(0.2126, 0.7152, 0.0722));
       col = mix(vec3(l), col, uSat);
       col = pow(max(col, 0.0), vec3(uContrast)) * (1.0 + (uContrast - 1.0) * 0.5);
+      float sh = 1.0 - smoothstep(0.0, 0.35, l), hi = smoothstep(0.45, 1.4, l);
+      col *= mix(vec3(1.0), vec3(0.93, 0.98, 1.1), sh * 0.55);
+      col *= mix(vec3(1.0), vec3(1.07, 1.02, 0.9), hi * 0.6);
       vec2 d = vUv - 0.5; float v = 1.0 - dot(d, d) * uVig * 2.2;
       gl_FragColor = vec4(col * v, c.a);
+    }`,
+};
+
+// flou de profondeur façon maquette : le lointain (haut de l'écran) et le tout premier plan
+// sont légèrement adoucis, le centre reste net
+const TiltShiftShader = {
+  uniforms: { tDiffuse: { value: null }, uPx: { value: new THREE.Vector2(1 / 1280, 1 / 720) }, uAmount: { value: 1 } },
+  vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+  fragmentShader: `uniform sampler2D tDiffuse; uniform vec2 uPx; uniform float uAmount; varying vec2 vUv;
+    void main(){
+      float r = (smoothstep(0.74, 1.0, vUv.y) * 2.2 + smoothstep(0.14, 0.0, vUv.y) * 1.2) * uAmount;
+      vec4 c = texture2D(tDiffuse, vUv);
+      if (r > 0.05) {
+        vec4 acc = c; float wsum = 1.0;
+        for (int i = 0; i < 12; i++) {
+          float a = float(i) * 2.399963, rr = sqrt((float(i) + 0.5) / 12.0) * r;
+          vec4 t = texture2D(tDiffuse, vUv + vec2(cos(a), sin(a)) * rr * uPx);
+          acc += t; wsum += 1.0;
+        }
+        c = acc / wsum;
+      }
+      gl_FragColor = c;
     }`,
 };
 
@@ -145,7 +183,7 @@ export class Renderer3D {
     const r = this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance', preserveDrawingBuffer: !!opts.preserve });
     r.outputColorSpace = THREE.SRGBColorSpace;
     r.toneMapping = THREE.ACESFilmicToneMapping;
-    r.toneMappingExposure = 1.08;
+    r.toneMappingExposure = 1.24;
     r.shadowMap.enabled = this.q.shadow > 0;
     r.shadowMap.type = this.q.hardShadow ? THREE.PCFShadowMap : THREE.PCFSoftShadowMap;
 
@@ -184,9 +222,9 @@ export class Renderer3D {
   // ------------------------------------------------------------------ scène
   setupLights() {
     const s = this.scene;
-    this.hemi = new THREE.HemisphereLight(0xcfe2ff, 0x6b5a3e, 0.65);
+    this.hemi = new THREE.HemisphereLight(0xbcd6ff, 0x8a7650, 0.9);
     s.add(this.hemi);
-    const sun = this.sun = new THREE.DirectionalLight(0xffe9cc, 2.7);
+    const sun = this.sun = new THREE.DirectionalLight(0xffe0b4, 3.0);
     sun.castShadow = this.q.shadow > 0;
     if (sun.castShadow) {
       sun.shadow.mapSize.set(this.q.shadow, this.q.shadow);
@@ -196,7 +234,7 @@ export class Renderer3D {
       const c = sun.shadow.camera; c.near = 1; c.far = 160;
     }
     s.add(sun); s.add(sun.target);
-    this.sunOffset = new THREE.Vector3(-34, 46, 8);
+    this.sunOffset = new THREE.Vector3(-36, 42, 12);
   }
 
   setupEnvironment() {
@@ -204,7 +242,7 @@ export class Renderer3D {
     const cv = document.createElement('canvas'); cv.width = 512; cv.height = 256;
     const g = cv.getContext('2d');
     const grd = g.createLinearGradient(0, 0, 0, 256);
-    grd.addColorStop(0, '#3d6ea8'); grd.addColorStop(0.45, '#9cc0e0'); grd.addColorStop(0.5, '#e8dcc0'); grd.addColorStop(0.56, '#7a7458'); grd.addColorStop(1, '#3a3428');
+grd.addColorStop(0, '#2f65b0'); grd.addColorStop(0.36, '#86b6e6'); grd.addColorStop(0.48, '#f2d9a6'); grd.addColorStop(0.52, '#c9b488'); grd.addColorStop(0.6, '#6e6a4c'); grd.addColorStop(1, '#343024');
     g.fillStyle = grd; g.fillRect(0, 0, 512, 256);
     const sg = g.createRadialGradient(90, 70, 0, 90, 70, 60);
     sg.addColorStop(0, 'rgba(255,250,230,1)'); sg.addColorStop(1, 'rgba(255,240,200,0)');
@@ -214,7 +252,7 @@ export class Renderer3D {
     tex.colorSpace = THREE.SRGBColorSpace;
     const pm = new THREE.PMREMGenerator(this.renderer);
     this.scene.environment = pm.fromEquirectangular(tex).texture;
-    this.scene.environmentIntensity = 0.55;
+    this.scene.environmentIntensity = 0.62;
     tex.dispose(); pm.dispose();
   }
 
@@ -239,10 +277,11 @@ export class Renderer3D {
     if (changed) this.fogTex.needsUpdate = true;
   }
 
-  std(params, opts = {}) { return patchWorld(new THREE.MeshStandardMaterial(params), this.U, opts); }
+  std(params, opts = {}) { return patchWorld(new THREE.MeshStandardMaterial(params), this.U, this.stdDefaults ? { ...this.stdDefaults, ...opts } : opts); }
 
   makeMaterials() {
     const T = this.T;
+    this.stdDefaults = { ground: true }; // tous les matériaux de construction reçoivent la patine
     const tm = (pair, color, rough = 0.85, ns = 0.8, extra = {}) => this.std({ map: pair.map, normalMap: pair.normal, normalScale: new THREE.Vector2(ns, ns), color, roughness: rough, ...extra });
     this.M = {
       stone: tm(T.stone, 0xffffff, 0.88, 1),
@@ -306,8 +345,9 @@ export class Renderer3D {
     this.teams = this.game.players.map((p) => ({
       glow: patchWorld(new THREE.MeshBasicMaterial({ color: new THREE.Color(p.color).lerp(new THREE.Color(0xffffff), 0.35) }), this.U),
       cloth: this.std({ map: T.cloth.map, color: new THREE.Color(p.color), roughness: 0.85 }),
-      banner: this.std({ map: T.cloth.map, color: new THREE.Color(p.color), roughness: 0.85, side: THREE.DoubleSide }, { banner: true }),
+      banner: this.std({ map: T.cloth.map, color: new THREE.Color(p.color), roughness: 0.85, side: THREE.DoubleSide }, { banner: true, ground: false }),
     }));
+    this.stdDefaults = null;
   }
 
   // ------------------------------------------------------------------ terrain
@@ -357,7 +397,7 @@ export class Renderer3D {
     splat.magFilter = splat.minFilter = THREE.LinearFilter; splat.needsUpdate = true;
     const T = this.T;
     const mat = this.std({ roughness: 0.95, metalness: 0 }, {
-      terrain: true,
+      terrain: true, detail: !!this.q.detail,
       uniforms: { uSplat: { value: splat }, uGrass: { value: T.grass }, uForest: { value: T.forest }, uDirt: { value: T.dirt }, uSand: { value: T.sand } },
     });
     const mesh = this.terrain = new THREE.Mesh(geo, mat);
@@ -389,7 +429,7 @@ export class Renderer3D {
   setupUnits() {
     const G = this.UG = unitGeometries();
     const T = this.T;
-    const fogOpt = {};
+    const fogOpt = { rim: 0.34 };
     this.UM = {
       cloth: this.std({ map: T.cloth.map, normalMap: T.cloth.normal, normalScale: new THREE.Vector2(0.7, 0.7), roughness: 0.88 }, fogOpt),
       skin: this.std({ roughness: 0.55 }, fogOpt),
@@ -438,6 +478,42 @@ export class Renderer3D {
     for (const [civ, arr] of Object.entries(CIV_HAIR)) this.civHair[civ] = arr.map((c) => new THREE.Color(c));
     this.bones = {};
     for (const b of BONES) this.bones[b] = new THREE.Matrix4();
+    // ombre de contact : une tache douce sous chaque unité l'ancre au sol
+    this.softTex = this.softShadowTexture(false);
+    this.blobMat = new THREE.MeshBasicMaterial({ map: this.softTex, color: 0x000000, transparent: true, opacity: 0.5, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
+    const blob = this.blobMesh = new THREE.InstancedMesh(new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2), this.blobMat, MAXU);
+    blob.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    blob.frustumCulled = false; blob.count = 0; blob.renderOrder = 1;
+    blob.raycast = () => {};
+    this.scene.add(blob);
+    this.blobN = 0;
+  }
+
+  // dégradé sombre vers transparent (rond pour les unités, carré adouci pour les bâtiments)
+  softShadowTexture(square) {
+    const S = 64, cv = document.createElement('canvas'); cv.width = cv.height = S;
+    const g = cv.getContext('2d'), img = g.createImageData(S, S);
+    for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
+      const u = (x + 0.5) / S * 2 - 1, v = (y + 0.5) / S * 2 - 1;
+      const d = square ? Math.max(Math.abs(u), Math.abs(v)) : Math.hypot(u, v);
+      const a = square ? 1 - Math.min(1, Math.max(0, (d - 0.62) / 0.38)) : Math.max(0, 1 - d);
+      const i = (y * S + x) * 4;
+      img.data[i] = img.data[i + 1] = img.data[i + 2] = 255;
+      img.data[i + 3] = 255 * a * a * (3 - 2 * a);
+    }
+    g.putImageData(img, 0, 0);
+    const t = new THREE.CanvasTexture(cv);
+    t.needsUpdate = true;
+    return t;
+  }
+
+  addBlob(x, y, z, yaw, type) {
+    if (this.blobN >= MAXU) return;
+    const cls = UNITS[type].cls;
+    let w = 0.62, l = 0.62;
+    if (cls === 'cavalry') { w = 0.8; l = 1.5; } else if (type === 'tank') { w = 1.5; l = 2.1; } else if (cls === 'siege') { w = 1.2; l = 1.6; } else if (type === 'robot') { w = 1.3; l = 1.3; } else if (cls === 'air') { w = type === 'bomber' ? 2.6 : 1.1; l = type === 'bomber' ? 2.0 : 1.1; }
+    tmpM.compose(tmpV.set(x, y + 0.035, z), tmpQ.setFromAxisAngle(UP, yaw), tmpS.set(w, 1, l));
+    this.blobMesh.setMatrixAt(this.blobN++, tmpM);
   }
 
   partsFor(type, civ) {
@@ -484,6 +560,7 @@ export class Renderer3D {
   syncUnits(alpha, dt) {
     const g = this.game, me = this.me, vis = g.players[me].visible, W = g.map.w;
     for (const s of this.parts.values()) s.n = 0;
+    this.blobN = 0;
     const alive = new Set();
     for (const u of g.units) {
       if (u.dead) continue;
@@ -517,6 +594,7 @@ export class Renderer3D {
       const y = this.heightAt(x, z);
       if (!this.frustum.intersectsSphere(tmpSphere.set(tmpV.set(x, y + 0.7, z), 2.2))) continue;
       this.emitUnit(u, u.type, u.owner, x, y, z, st.yaw, st);
+      this.addBlob(x, y, z, st.yaw, u.type);
       // poussière des cavaliers
       if (moving && UNITS[u.type].cls === 'cavalry' && Math.random() < dt * 8) this.dust.emit(x, y + 0.05, z, (Math.random() - 0.5) * 0.3, 0.25, (Math.random() - 0.5) * 0.3, 0.9, 0.25, 0.7, [0.6, 0.52, 0.4, 0.35], [0.6, 0.55, 0.45, 0]);
     }
@@ -528,6 +606,8 @@ export class Renderer3D {
       const sink = Math.max(0, fx.t - 6) * 0.08;
       this.emitUnit(null, fx.type, fx.owner, fx.x, this.heightAt(fx.x, fx.y) - sink, fx.y, fx._st.yaw, fx._st, Math.min(1, fx.t + 0.01));
     }
+    this.blobMesh.count = this.blobN;
+    if (this.blobN) { const im = this.blobMesh.instanceMatrix; im.clearUpdateRanges(); im.addUpdateRange(0, this.blobN * 16); im.needsUpdate = true; }
     // n'envoie au processeur graphique que les instances réellement utilisées
     for (const s of this.parts.values()) {
       s.mesh.count = s.n;
@@ -542,18 +622,37 @@ export class Renderer3D {
   setupNature() {
     const T = this.T;
     this.barkMat = this.std({ map: T.bark.map, normalMap: T.bark.normal, roughness: 0.9 });
-    this.leafMat = this.std({ map: T.foliage, vertexColors: true, roughness: 0.82, color: 0xffffff }, { wind: 0.014 });
-    this.pineMat = this.std({ map: T.foliage, vertexColors: true, roughness: 0.85, color: 0xffffff }, { wind: 0.01 });
-    const kinds = this.treeKinds = treeGeometries();
+    this.leafMat = this.std({ map: T.foliage, vertexColors: true, roughness: 0.82, color: 0xffffff }, { wind: 0.014, rim: 0.22 });
+    this.pineMat = this.std({ map: T.foliage, vertexColors: true, roughness: 0.85, color: 0xffffff }, { wind: 0.01, rim: 0.16 });
+    // bouquets de feuilles découpés (qualités Ultra et Équilibrée) : contours feuillus et lumineux
+    const withCards = !!this.q.cards;
+    if (withCards) {
+      const lt = new THREE.CanvasTexture(leafCardCanvas(256));
+      lt.colorSpace = THREE.SRGBColorSpace; lt.anisotropy = 4;
+      this.cardMat = this.std({ map: lt, vertexColors: true, alphaTest: 0.4, alphaToCoverage: true, roughness: 0.78, color: 0xffffff }, { wind: 0.014, rim: 0.3 });
+    }
+    const kinds = this.treeKinds = treeKinds(withCards);
     const count = this.game.map.w * this.game.map.h;
     const cap = Math.min(count, 6000);
     this.treeMeshes = kinds.map((k) => {
       const trunk = new THREE.InstancedMesh(k.trunk, this.barkMat, cap);
       const leaves = new THREE.InstancedMesh(k.leaves, k.pine ? this.pineMat : this.leafMat, cap);
-      for (const m of [trunk, leaves]) { m.castShadow = true; m.receiveShadow = true; m.frustumCulled = false; m.count = 0; this.scene.add(m); }
-      leaves.setColorAt(0, new THREE.Color(1, 1, 1));
-      return { trunk, leaves, ids: [] };
+      const cards = k.cards ? new THREE.InstancedMesh(k.cards, this.cardMat, cap) : null;
+      for (const m of [trunk, leaves, cards]) {
+        if (!m) continue;
+        m.castShadow = m !== cards; m.receiveShadow = true; m.frustumCulled = false; m.count = 0;
+        m.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+        m.setColorAt(0, new THREE.Color(1, 1, 1));
+        this.scene.add(m);
+      }
+      // l'écorce a la même teinte pour tous les arbres d'une essence
+      const bc = trunk.instanceColor.array;
+      for (let i = 0; i < cap; i++) { bc[i * 3] = k.bark[0]; bc[i * 3 + 1] = k.bark[1]; bc[i * 3 + 2] = k.bark[2]; }
+      trunk.instanceColor.needsUpdate = true;
+      return { trunk, leaves, cards, kind: k, ids: [], cap, all: null };
     });
+    this.leafKinds = this.treeMeshes.filter((k) => !k.kind.pine);
+    this.pineKinds = this.treeMeshes.filter((k) => k.kind.pine);
     const R = rockGeometries();
     this.rockMatGold = this.std({ color: 0x8a7a62, roughness: 0.85, flatShading: true });
     this.rockMatStone = this.std({ color: 0xb4b2ae, roughness: 0.85, flatShading: true });
@@ -573,9 +672,14 @@ export class Renderer3D {
     this.sheepWool = inst(SG.wool, this.std({ color: 0xf2efe6, roughness: 1 }), 200);
     this.sheepDark = inst(SG.dark, this.std({ color: 0x2e2a26, roughness: 0.8 }), 200);
     this.sheepIds = [];
-    // herbe
+    // herbe et décor au sol (masqués sous les bâtiments et les champs)
     this.grassMesh = null;
+    this.scatter = [];
+    this.grassBlocked = new Uint8Array(this.game.map.w * this.game.map.h);
     if (this.q.grass > 0) this.buildGrass();
+    if (this.q.decor > 0) this.buildDecor();
+    this.updateGrassBlocking(true);
+    this.setupBirds();
     // cultures des fermes
     this.cropMat = this.std({ vertexColors: true, side: THREE.DoubleSide, roughness: 0.9 }, { wind: 1.4 });
     this.cropMesh = inst(grassTuftGeometry(7, 0.3, 610), this.cropMat, 6000, false);
@@ -583,42 +687,144 @@ export class Renderer3D {
     this.resSig = '';
   }
 
+  // Herbe et décor sont rangés par carreaux de la carte : seuls les carreaux visibles sont
+  // envoyés au processeur graphique (voir cullScatter).
+  addScatter(mesh, list, color = null) {
+    const { w, h } = this.game.map, CH = SCATTER_CHUNK, cw = Math.ceil(w / CH), nch = cw * Math.ceil(h / CH);
+    const chunkOf = (ti) => Math.floor(Math.floor(ti / w) / CH) * cw + Math.floor((ti % w) / CH);
+    list.sort((p, q) => chunkOf(p.ti) - chunkOf(q.ti));
+    const n = list.length;
+    const orig = new Float32Array(n * 16), tile = new Int32Array(n), cols = color ? new Float32Array(n * 3) : null;
+    const ranges = new Int32Array(nch + 1);
+    list.forEach((it, i) => {
+      it.m.toArray(orig, i * 16);
+      tile[i] = it.ti;
+      if (cols) { cols[i * 3] = it.c[0]; cols[i * 3 + 1] = it.c[1]; cols[i * 3 + 2] = it.c[2]; }
+      ranges[chunkOf(it.ti) + 1] = i + 1;
+    });
+    for (let c = 1; c <= nch; c++) if (ranges[c] < ranges[c - 1]) ranges[c] = ranges[c - 1];
+    mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    if (cols) { mesh.setColorAt(0, new THREE.Color(1, 1, 1)); mesh.instanceColor.setUsage(THREE.DynamicDrawUsage); }
+    mesh.frustumCulled = false; mesh.count = 0;
+    this.scene.add(mesh);
+    this.scatter.push({ mesh, orig, cur: orig.slice(), cols, tile, ranges });
+    this.scatterDirty = true;
+  }
+
   buildGrass() {
     const g = this.game, { w, h } = g.map;
     const per = this.q.grass;
     const list = [];
+    const forest = this.painter.forest;
     for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
-      const t = g.map.terrain[y * w + x];
+      const ti = y * w + x, t = g.map.terrain[ti];
       if (t === TERRAIN.WATER || t === TERRAIN.SAND) continue;
       const n = t === TERRAIN.DIRT ? Math.floor(per / 3) : per;
-      for (let k = 0; k < n; k++) list.push([x + hash(x * 13 + k, y) * 0.95, y + hash(x, y * 17 + k) * 0.95, y * w + x, k]);
+      for (let k = 0; k < n; k++) {
+        const px = x + hash(x * 13 + k, y) * 0.95, pz = y + hash(x, y * 17 + k) * 0.95;
+        const sc = 0.7 + hash(ti, k + 3) * 0.8;
+        const m = new THREE.Matrix4().compose(tmpV.set(px, this.heightAt(px, pz), pz), tmpQ.setFromAxisAngle(UP, hash(ti, k) * 6.28), tmpS.set(sc, sc * (0.8 + hash(k, ti) * 0.6), sc));
+        const f = forest[ti], yel = hash(ti * 3, k);
+        list.push({ ti, m, c: [0.72 + yel * 0.3 - f * 0.25, 0.78 + yel * 0.08 - f * 0.2, 0.44 - f * 0.12] });
+      }
     }
-    const geo = grassTuftGeometry(6, 0.2, 600);
     const mat = this.std({ vertexColors: true, side: THREE.DoubleSide, roughness: 0.95, color: 0xffffff }, { wind: 1.8 });
-    const mesh = new THREE.InstancedMesh(geo, mat, list.length);
-    mesh.receiveShadow = true; mesh.frustumCulled = false;
-    this.grassMats = new Float32Array(list.length * 16);
-    this.grassTile = new Int32Array(list.length);
-    const forest = this.painter.forest;
-    list.forEach(([x, z, ti, k], i) => {
-      const s = 0.7 + hash(ti, k + 3) * 0.8;
-      tmpM.compose(tmpV.set(x, this.heightAt(x, z), z), tmpQ.setFromAxisAngle(UP, hash(ti, k) * 6.28), tmpS.set(s, s * (0.8 + hash(k, ti) * 0.6), s));
-      tmpM.toArray(this.grassMats, i * 16);
-      mesh.setMatrixAt(i, tmpM);
-      const f = forest[ti];
-      const yel = hash(ti * 3, k);
-      tmpC.setRGB(0.72 + yel * 0.3 - f * 0.25, 0.78 + yel * 0.08 - f * 0.2, 0.44 - f * 0.12);
-      mesh.setColorAt(i, tmpC);
-      this.grassTile[i] = ti;
-    });
-    this.grassBlocked = new Uint8Array(w * h);
-    this.grassMesh = mesh;
-    this.scene.add(mesh);
-    this.updateGrassBlocking(true);
+    const mesh = this.grassMesh = new THREE.InstancedMesh(grassTuftGeometry(6, 0.2, 600), mat, Math.max(1, list.length));
+    mesh.receiveShadow = true;
+    this.addScatter(mesh, list, true);
+  }
+
+  // fleurs des prairies, fougères des sous-bois, roseaux et nénuphars des rivages, galets, souches
+  buildDecor() {
+    const dens = this.q.decor, g = this.game, { w, h } = g.map, P = this.painter;
+    const D = decorGeometries();
+    const soft = (wind) => this.std({ vertexColors: true, side: THREE.DoubleSide, roughness: 0.9 }, { wind });
+    const mats = { flowers: soft(1.1), fern: soft(0.5), reeds: soft(0.42), shrub: this.std({ map: this.T.foliage, vertexColors: true, roughness: 0.85 }, { wind: 0.12, rim: 0.12 }), pebbles: this.std({ vertexColors: true, roughness: 0.9, flatShading: true }), log: this.std({ vertexColors: true, roughness: 0.95 }), lilies: this.std({ vertexColors: true, side: THREE.DoubleSide, roughness: 0.5 }) };
+    const lists = new Map();
+    const add = (name, k, x, z, ti, s, y) => {
+      const key = name + '|' + k;
+      if (!lists.has(key)) lists.set(key, []);
+      const n = lists.get(key).length;
+      lists.get(key).push({ ti, m: new THREE.Matrix4().compose(tmpV.set(x, y === null ? this.heightAt(x, z) - 0.01 : y, z), tmpQ.setFromAxisAngle(UP, hash(ti, n + 9) * 6.28), tmpS.set(s, s, s)) });
+    };
+    const water = (x, y) => x < 0 || y < 0 || x >= w || y >= h || g.map.terrain[y * w + x] === TERRAIN.WATER;
+    for (let ty = 0; ty < h; ty++) for (let tx = 0; tx < w; tx++) {
+      const i = ty * w + tx, t = g.map.terrain[i];
+      const occ = g.map.occ[i], e = occ ? g.entities.get(occ) : null;
+      if (e && e.kind === 'building') continue;
+      const rnd = (k) => hash(i * 7 + k, k * 31 + 5);
+      const px = tx + 0.15 + rnd(1) * 0.7, pz = ty + 0.15 + rnd(2) * 0.7, sc = 0.8 + rnd(3) * 0.5;
+      if (t === TERRAIN.WATER) {
+        const shore = !water(tx + 1, ty) || !water(tx - 1, ty) || !water(tx, ty + 1) || !water(tx, ty - 1);
+        if (shore) { if (rnd(4) < 0.55 * dens) add('reeds', i % 2, px, pz, i, sc * 1.15, null); } else if (P.depth[i] < 0.55 && rnd(5) < 0.22 * dens) add('lilies', i % 2, px, pz, i, sc * 1.3, -0.108);
+        continue;
+      }
+      const nearWater = water(tx + 1, ty) || water(tx - 1, ty) || water(tx, ty + 1) || water(tx, ty - 1);
+      if (t === TERRAIN.SAND) {
+        if (nearWater && rnd(4) < 0.35 * dens) add('reeds', i % 2, px, pz, i, sc, null);
+        if (rnd(7) < 0.16 * dens) add('pebbles', i % 3, px, pz, i, sc * 1.2, null);
+        continue;
+      }
+      if (t === TERRAIN.DIRT) { if (rnd(7) < 0.12 * dens) add('pebbles', i % 3, px, pz, i, sc, null); continue; }
+      const forest = P.forest[i];
+      if (forest > 0.3) {
+        if (rnd(8) < 0.55 * dens) add('fern', i % 2, px, pz, i, sc * 1.1, null);
+        if (!occ && rnd(9) < 0.05 * dens) add('log', 0, px, pz, i, sc, null);
+        if (!occ && forest < 0.75 && rnd(10) < 0.3 * dens) add('shrub', i % 2, px, pz, i, sc * 1.2, null);
+      } else if (!occ) {
+        const meadow = vnoise2(tx * 0.11 + 3.3, ty * 0.11 + 7.9);
+        const kind = Math.min(3, Math.floor(vnoise2(tx * 0.045 + 40.1, ty * 0.045 + 12.7) * 4.6));
+        if (meadow > 0.5) {
+          const n = meadow > 0.66 ? 3 : 2;
+          for (let k = 0; k < n; k++) if (rnd(11 + k) < 0.6 * dens) add('flowers', rnd(20 + k) < 0.8 ? kind : (kind + 1 + k) % 4, tx + 0.1 + rnd(30 + k) * 0.8, ty + 0.1 + rnd(40 + k) * 0.8, i, 0.8 + rnd(50 + k) * 0.6, null);
+        } else if (rnd(13) < 0.05 * dens) add('flowers', Math.floor(rnd(14) * 4), px, pz, i, sc, null);
+        if (rnd(15) < 0.035 * dens) add('pebbles', i % 3, px, pz, i, sc, null);
+        if (forest > 0.08 && rnd(16) < 0.18 * dens) add('shrub', i % 2, px, pz, i, sc, null);
+      }
+    }
+    for (const [key, list] of lists) {
+      const [name, k] = key.split('|');
+      const mesh = new THREE.InstancedMesh(D[name][+k], mats[name], list.length);
+      mesh.receiveShadow = true; mesh.castShadow = name === 'log' || name === 'shrub';
+      this.addScatter(mesh, list);
+    }
+  }
+
+  // quelques vols d'oiseaux traversent la carte (leurs ombres glissent sur le sol)
+  setupBirds() {
+    if (!(this.q.decor > 0)) { this.birds = null; return; }
+    const mat = this.std({ color: 0xe6e4de, side: THREE.DoubleSide, roughness: 0.9 }, { flap: true });
+    const m = this.birds = new THREE.InstancedMesh(birdGeometry(), mat, 14);
+    m.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    m.castShadow = true; m.frustumCulled = false; m.raycast = () => {};
+    this.scene.add(m);
+  }
+
+  syncBirds() {
+    if (!this.birds) return;
+    const { w, h } = this.game.map, t = this.time;
+    let n = 0;
+    for (let f = 0; f < 2; f++) {
+      const sp = 0.045 + f * 0.012, a = t * sp * (f ? -1 : 1) + f * 2.4;
+      const cx = w / 2 + Math.cos(a) * w * (0.3 + 0.1 * Math.sin(t * 0.021 + f)), cz = h / 2 + Math.sin(a * 1.3 + f) * h * 0.34;
+      const a2 = a + 0.01 * (f ? -1 : 1);
+      const nx = w / 2 + Math.cos(a2) * w * (0.3 + 0.1 * Math.sin(t * 0.021 + f)), nz = h / 2 + Math.sin(a2 * 1.3 + f) * h * 0.34;
+      const yaw = Math.atan2(nx - cx, nz - cz);
+      for (let i = 0; i < 7; i++) {
+        // formation en V derrière l'oiseau de tête
+        const side = i === 0 ? 0 : (i % 2 ? 1 : -1), row = Math.ceil(i / 2);
+        const ox = side * row * 0.75, oz = -row * 0.7;
+        const x = cx + Math.cos(yaw) * ox + Math.sin(yaw) * oz, z = cz - Math.sin(yaw) * ox + Math.cos(yaw) * oz;
+        tmpM.compose(tmpV.set(x, 7 + f * 1.2 + Math.sin(t * 0.9 + i) * 0.15, z), tmpQ.setFromAxisAngle(UP, yaw), tmpS.set(0.6, 0.6, 0.6));
+        this.birds.setMatrixAt(n++, tmpM);
+      }
+    }
+    this.birds.count = n;
+    this.birds.instanceMatrix.needsUpdate = true;
   }
 
   updateGrassBlocking(force = false) {
-    if (!this.grassMesh) return;
+    if (!this.scatter || !this.scatter.length) return;
     const m = this.game.map, n = m.w * m.h;
     let dirty = false;
     const now = new Uint8Array(n);
@@ -630,15 +836,75 @@ export class Renderer3D {
       if (b !== this.grassBlocked[i]) dirty = true;
     }
     if (!dirty && !force) return;
-    const zero = new THREE.Matrix4().makeScale(0, 0, 0);
-    for (let i = 0; i < this.grassTile.length; i++) {
-      const ti = this.grassTile[i];
-      if (now[ti] === this.grassBlocked[ti] && !force) continue;
-      if (now[ti]) this.grassMesh.setMatrixAt(i, zero);
-      else { tmpM.fromArray(this.grassMats, i * 16); this.grassMesh.setMatrixAt(i, tmpM); }
+    for (const sc of this.scatter) {
+      for (let i = 0; i < sc.tile.length; i++) {
+        const ti = sc.tile[i];
+        if (now[ti] === this.grassBlocked[ti] && !force) continue;
+        if (now[ti]) sc.cur.fill(0, i * 16, i * 16 + 16);
+        else sc.cur.set(sc.orig.subarray(i * 16, i * 16 + 16), i * 16);
+      }
     }
+    this.scatterDirty = true;
     this.grassBlocked = now;
-    this.grassMesh.instanceMatrix.needsUpdate = true;
+  }
+
+  // n'envoie au processeur graphique que l'herbe et le décor des carreaux en vue
+  cullScatter() {
+    if (!this.scatter || !this.scatter.length) return;
+    const { w, h } = this.game.map, CH = SCATTER_CHUNK, cw = Math.ceil(w / CH), chn = Math.ceil(h / CH);
+    const vis = [];
+    for (let cz = 0; cz < chn; cz++) for (let cx = 0; cx < cw; cx++) {
+      if (this.frustum.intersectsSphere(tmpSphere.set(tmpV.set((cx + 0.5) * CH, 0.2, (cz + 0.5) * CH), CH * 0.72 + 1.2))) vis.push(cz * cw + cx);
+    }
+    const sig = vis.join(',');
+    if (sig === this.scatterSig && !this.scatterDirty) return;
+    this.scatterSig = sig; this.scatterDirty = false;
+    for (const sc of this.scatter) {
+      const im = sc.mesh.instanceMatrix, ic = sc.cols ? sc.mesh.instanceColor : null;
+      let n = 0;
+      for (const c of vis) {
+        const a = sc.ranges[c], b = sc.ranges[c + 1];
+        if (b <= a) continue;
+        im.array.set(sc.cur.subarray(a * 16, b * 16), n * 16);
+        if (ic) ic.array.set(sc.cols.subarray(a * 3, b * 3), n * 3);
+        n += b - a;
+      }
+      sc.mesh.count = n;
+      if (!n) continue;
+      im.clearUpdateRanges(); im.addUpdateRange(0, n * 16); im.needsUpdate = true;
+      if (ic) { ic.clearUpdateRanges(); ic.addUpdateRange(0, n * 3); ic.needsUpdate = true; }
+    }
+  }
+
+  // arbres : seuls ceux qui sont en vue (ou dont l'ombre peut l'être) sont dessinés
+  cullTrees() {
+    const c = this.camState;
+    const sig = `${Math.round(c.tx * 2)},${Math.round(c.tz * 2)},${Math.round(c.dist)},${Math.round(c.yaw * 40)},${Math.round(c.pitch * 40)},${this.w},${this.h}`;
+    if (sig === this.treeSig && !this.treeDirty) return;
+    this.treeSig = sig; this.treeDirty = false;
+    for (const k of this.treeMeshes) {
+      const A = k.all;
+      if (!A) continue;
+      const tm = k.trunk.instanceMatrix.array, lm = k.leaves.instanceMatrix.array, lc = k.leaves.instanceColor.array;
+      const cm = k.cards ? k.cards.instanceMatrix.array : null, cc = k.cards ? k.cards.instanceColor.array : null;
+      let n = 0;
+      k.ids.length = 0;
+      for (let i = 0; i < A.n; i++) {
+        if (!this.frustum.intersectsSphere(tmpSphere.set(tmpV.set(A.pos[i * 2], 1.2, A.pos[i * 2 + 1]), 4.2))) continue;
+        const src = A.mats.subarray(i * 16, i * 16 + 16), col = A.cols.subarray(i * 3, i * 3 + 3);
+        tm.set(src, n * 16); lm.set(src, n * 16); lc.set(col, n * 3);
+        if (cm) { cm.set(src, n * 16); cc.set(col, n * 3); }
+        k.ids.push(A.ids[i]);
+        n++;
+      }
+      for (const m of [k.trunk, k.leaves, k.cards]) {
+        if (!m) continue;
+        m.count = n; m.boundingSphere = null;
+        if (!n) continue;
+        m.instanceMatrix.clearUpdateRanges(); m.instanceMatrix.addUpdateRange(0, n * 16); m.instanceMatrix.needsUpdate = true;
+        if (m !== k.trunk) { m.instanceColor.clearUpdateRanges(); m.instanceColor.addUpdateRange(0, n * 3); m.instanceColor.needsUpdate = true; }
+      }
+    }
   }
 
   syncResources() {
@@ -647,7 +913,8 @@ export class Renderer3D {
     for (const r of g.resources) if (r.type !== 'tree') sig = (sig * 31 + Math.ceil(r.amount / r.maxAmount * 6)) | 0;
     if (sig === this.resSig) return;
     this.resSig = sig;
-    for (const k of this.treeMeshes) { k.trunk.count = 0; k.leaves.count = 0; k.ids = []; }
+    for (const k of this.treeMeshes) { k.all = { n: 0, mats: k.all && k.all.mats.length >= k.cap * 16 ? k.all.mats : new Float32Array(k.cap * 16), cols: k.all && k.all.cols.length >= k.cap * 3 ? k.all.cols : new Float32Array(k.cap * 3), pos: k.all && k.all.pos.length >= k.cap * 2 ? k.all.pos : new Float32Array(k.cap * 2), ids: [] }; }
+    this.treeDirty = true;
     for (const arr of Object.values(this.rocks)) for (const r of arr) { r.mesh.count = 0; r.ids = []; }
     this.bushMesh.mesh.count = 0; this.bushMesh.ids = []; this.berryMesh.count = 0;
     this.sheepIds = [];
@@ -666,11 +933,20 @@ export class Renderer3D {
       const x = r.x + (hash(v, 1) - 0.5) * 0.35, z = r.y + (hash(v, 2) - 0.5) * 0.35;
       const y = this.heightAt(x, z);
       if (r.type === 'tree') {
-        const k = this.treeMeshes[v % this.treeMeshes.length];
-        const s = 0.95 + hash(v, 3) * 0.45;
-        put(k.trunk, k.ids, r, x, y, z, hash(v, 4) * 6.28, s, s * (0.9 + hash(v, 5) * 0.3));
-        const i = put(k.leaves, null, r, x, y, z, hash(v, 4) * 6.28, s, s * (0.9 + hash(v, 5) * 0.3));
-        if (i >= 0) { const hh = hash(v, 6), au = hash(v, 8) > 0.88 ? 1 : 0; tmpC.setRGB(0.36 + hh * 0.22 + au * 0.45, 0.74 + hh * 0.14 - au * 0.1, 0.16 + hh * 0.05); k.leaves.setColorAt(i, tmpC); }
+        // les résineux et les feuillus forment des bois distincts
+        const pineZone = vnoise2(r.x * 0.055 + 11.3, r.y * 0.055 + 4.1) > 0.56;
+        const set = (hash(v, 9) < 0.86) === pineZone ? this.pineKinds : this.leafKinds;
+        const k = set[v % set.length], kd = k.kind;
+        const s = 0.95 + hash(v, 3) * 0.45, sy = s * (0.9 + hash(v, 5) * 0.3), ry = hash(v, 4) * 6.28;
+        const A = k.all;
+        if (A.n < k.cap) {
+          const hh = hash(v, 6), au = hash(v, 8) < kd.autumn ? 0.5 + hash(v, 10) * 0.5 : 0;
+          tmpM.compose(tmpV.set(x, y, z), tmpQ.setFromAxisAngle(UP, ry), tmpS.set(s, sy, s)).toArray(A.mats, A.n * 16);
+          A.cols[A.n * 3] = (0.36 + hh * 0.22 + au * 0.5) * kd.tint[0]; A.cols[A.n * 3 + 1] = (0.74 + hh * 0.14 - au * 0.16) * kd.tint[1]; A.cols[A.n * 3 + 2] = (0.16 + hh * 0.05) * kd.tint[2];
+          A.pos[A.n * 2] = x; A.pos[A.n * 2 + 1] = z;
+          A.ids.push(r.id);
+          A.n++;
+        }
       } else if (r.type === 'gold' || r.type === 'stone') {
         const k = r.amount / r.maxAmount;
         const s = 0.55 + 0.5 * Math.sqrt(k);
@@ -685,7 +961,7 @@ export class Renderer3D {
         this.sheepIds.push(r.id);
       }
     }
-    const all = [...this.treeMeshes.flatMap((k) => [k.trunk, k.leaves]), ...Object.values(this.rocks).flat().map((r) => r.mesh), this.bushMesh.mesh, this.berryMesh];
+    const all = [ ...Object.values(this.rocks).flat().map((r) => r.mesh), this.bushMesh.mesh, this.berryMesh];
     for (const m of all) { m.instanceMatrix.needsUpdate = true; if (m.instanceColor) m.instanceColor.needsUpdate = true; m.boundingSphere = null; }
   }
 
@@ -839,6 +1115,13 @@ export class Renderer3D {
           group.userData = { anim: { banners: [] } };
         } else group = this.instantiate(b.type, b.owner);
         group.traverse((o) => { o.userData.entityId = b.id; });
+        if (!def.wall && !def.farm) {
+          // ombre douce au pied du bâtiment
+          if (!this.skirtMat) this.skirtMat = new THREE.MeshBasicMaterial({ map: this.softShadowTexture(true), color: 0x000000, transparent: true, opacity: 0.42, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
+          const sk = new THREE.Mesh(new THREE.PlaneGeometry(b.size + 1.5, b.size + 1.5).rotateX(-Math.PI / 2), this.skirtMat);
+          sk.position.set(b.size / 2, 0.04, b.size / 2); sk.renderOrder = 1; sk.raycast = () => {};
+          group.add(sk);
+        }
         const base = this.baseHeight(b);
         group.position.set(b.tx, base, b.ty);
         this.scene.add(group);
@@ -1119,6 +1402,12 @@ export class Renderer3D {
       ao.blendIntensity = 1.0;
       c.addPass(ao);
     }
+    if (this.q.tilt) { this.tilt = new ShaderPass(TiltShiftShader); this.tilt.uniforms.uAmount.value = this.q.tilt; c.addPass(this.tilt); }
+    if (this.q.bloom) {
+      // halo autour des hautes lumières : reflets de l'eau, fenêtres, métal au soleil, feux
+      this.bloom = new UnrealBloomPass(new THREE.Vector2(16, 16), this.q.bloom, 0.55, 1.05);
+      c.addPass(this.bloom);
+    }
     this.grade = new ShaderPass(GradeShader);
     c.addPass(this.grade);
     c.addPass(new OutputPass());
@@ -1131,6 +1420,7 @@ export class Renderer3D {
     this.renderer.setPixelRatio(pr);
     this.renderer.setSize(this.w, this.h, false);
     if (this.composer) { this.composer.setPixelRatio(pr); this.composer.setSize(this.w, this.h); }
+    if (this.tilt) this.tilt.uniforms.uPx.value.set(1 / Math.max(1, this.w), 1 / Math.max(1, this.h));
     this.camera.aspect = this.w / this.h;
     this.camera.updateProjectionMatrix();
     const dpr = window.devicePixelRatio || 1;
@@ -1271,8 +1561,11 @@ export class Renderer3D {
     // champ de vision (avec marge pour les ombres) : les unités hors écran ne sont pas animées
     this.frustum = this.frustum || new THREE.Frustum();
     this.frustum.setFromProjectionMatrix(tmpM.multiplyMatrices(this.camera.projectionMatrix, this.camera.matrixWorldInverse));
+    this.U.uHaze.value.set(c.dist * 0.95, 0.9 / Math.max(20, c.dist), 0.5);
     this.updateFog(dt);
     this.syncResources();
+    this.cullTrees();
+    this.cullScatter();
     this.gTimer = (this.gTimer || 0) - dt;
     if (this.gTimer <= 0) { this.gTimer = 0.5; this.updateGrassBlocking(); }
     this.syncBuildings(dt);
@@ -1280,6 +1573,7 @@ export class Renderer3D {
     this.lodFar = c.dist > 40 || this.q.tex === 'low';
     this.syncUnits(alpha, dt);
     this.syncSheep();
+    this.syncBirds();
     this.syncEffects(dt);
     this.syncSelection(ui);
     this.smoke.update(dt); this.fire.update(dt); this.dust.update(dt);

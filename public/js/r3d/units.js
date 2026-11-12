@@ -76,8 +76,9 @@ export function unitGeometries() {
     if (v.z < 0) v.z *= 0.92;
     else if (v.y > -0.1 && v.y < 0.38) v.z *= 1 + 0.1 * Math.sin((v.y + 0.1) / 0.48 * Math.PI);
   });
-  G.limb = latheG([[0, -1], [0.22, -0.97], [0.33, -0.88], [0.37, -0.72], [0.4, -0.3], [0.46, 0.3], [0.5, 0.62], [0.46, 0.84], [0.32, 0.96], [0, 1]], 12);
-  G.calf = deform(latheG([[0, -1], [0.24, -0.97], [0.32, -0.86], [0.33, -0.6], [0.4, -0.05], [0.5, 0.45], [0.48, 0.74], [0.36, 0.93], [0, 1]], 12), (v) => { if (v.z < 0 && v.y > -0.3) v.z *= 1.12; });
+  // membres : extrémités arrondies de même rayon que le segment voisin, pour des articulations continues
+  G.limb = latheG([[0, -1], [0.2, -0.99], [0.32, -0.95], [0.39, -0.86], [0.41, -0.6], [0.44, -0.1], [0.49, 0.4], [0.5, 0.66], [0.47, 0.86], [0.36, 0.96], [0.2, 0.995], [0, 1]], 12);
+  G.calf = deform(latheG([[0, -1], [0.18, -0.99], [0.27, -0.95], [0.3, -0.85], [0.32, -0.55], [0.4, -0.05], [0.49, 0.42], [0.5, 0.62], [0.47, 0.84], [0.38, 0.95], [0.2, 0.995], [0, 1]], 12), (v) => { if (v.z < 0 && v.y > -0.3) v.z *= 1.12; });
   G.head = deform(new THREE.SphereGeometry(0.5, 20, 16), (v) => {
     v.y *= 1.04;
     if (v.y < 0) { v.x *= 1 + v.y * 0.42; if (v.z < 0) v.z *= 1 + v.y * 0.35; }
@@ -204,7 +205,7 @@ function human(o = {}) {
   L.push(P('sph', lM, lC, 'hips', [0, -0.015, 0], [0.3, 0.17, 0.2]));
   for (const s of ['L', 'R']) {
     L.push(P('limb', lM, lC, 'leg' + s, [0, -0.118, 0], [0.098, 0.122, 0.1]));
-    L.push(P('sph', sM, sC, 'shin' + s, [0, 0, 0.004], [0.072, 0.068, 0.074]));
+    L.push(P('sph', sM, sC, 'shin' + s, [0, 0, 0.006], [0.07, 0.07, 0.074]));
     L.push(P('calf', sM, sC, 'shin' + s, [0, -0.102, -0.004], [0.074, 0.108, 0.078]));
     if (!barefoot && o.tallBoots !== false) L.push(P('calf', bM, bC, 'shin' + s, [0, -0.152, -0.002], [0.078, 0.068, 0.082]));
     if (o.sandals) L.push(P('box', 'leather', C.leather, 'shin' + s, [0, -0.16, 0.0], [0.074, 0.012, 0.078]));
@@ -222,7 +223,7 @@ function human(o = {}) {
   L.push(P('cyl', 'skin', 'skin', 'body', [0, 0.42, 0], [0.074, 0.07, 0.074]));
   L.push(...face(o));
   for (const s of ['L', 'R']) {
-    L.push(P('sph', slM, slC, 'arm' + s, [0, -0.01, 0], [0.088, 0.085, 0.09]));
+    L.push(P('sph', slM, slC, 'arm' + s, [0, -0.012, 0], [0.076, 0.07, 0.08]));
     L.push(P('limb', slM, slC, 'arm' + s, [0, -0.084, 0], [0.07, 0.088, 0.072]));
     L.push(P('calf', fM, fC, 'fore' + s, [0, -0.072, 0], [0.06, 0.078, 0.062]));
     L.push(P('rbox', o.gloves ? 'leather' : 'skin', o.gloves ?? 'skin', 'fore' + s, [0, -0.162, 0.004], [0.047, 0.068, 0.033]));

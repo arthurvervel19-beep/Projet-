@@ -950,9 +950,9 @@ export class UI {
     const btns = this.computeButtons();
     this.buttons = btns;
     const sig = btns.map((b) => b.icon + b.key + (b.disabled ? 1 : 0) + (b.badge || '')).join('|') + [...this.selected].join(',');
+    this.el('commands').classList.toggle('empty', !btns.length);
     if (sig === this.cmdSig) return;
     this.cmdSig = sig;
-    this.el('commands').classList.toggle('empty', !btns.length);
     // la liste revient au début quand la sélection ou la page change, pas à chaque rafraîchissement
     const ctx = [...this.selected].join(',') + '|' + (this.buildPage || 0);
     if (ctx !== this.cmdCtx) { this.cmdCtx = ctx; this.el('commands').scrollLeft = 0; }
