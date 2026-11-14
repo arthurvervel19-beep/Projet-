@@ -15,6 +15,8 @@ import { uploadSave, downloadSave } from './online.js';
 const $ = (id) => document.getElementById(id);
 window.__adrReady = true; // le jeu a démarré (voir le message de secours dans index.html)
 const audio = new AudioEngine();
+// la musique est pré-calculée en arrière-plan dès le chargement (lecture fluide même si le jeu ralentit)
+setTimeout(() => audio.warmup(), 1500);
 window.__audio = audio;
 let state = null;
 let demo = null;

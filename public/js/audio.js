@@ -65,8 +65,12 @@ const LINES = {
   },
 };
 
+// morceaux pré-calculés : catégorie de chaque style
+const KIND = { menu: 'menu', peace: 'calm', build: 'calm', battle: 'battle' };
+const PRERENDER_RATE = 32000; // fréquence d'échantillonnage des morceaux pré-calculés
+
 export class AudioEngine {
-  constructor() {
+  constructor(opts = {}) {
     this.ctx = null;
     this.musicVol = +(localGet('musicVol') ?? 0.6);
     this.sfxVol = +(localGet('sfxVol') ?? 0.75);
@@ -81,6 +85,13 @@ export class AudioEngine {
     this.pieceCount = 0;
     this.lastVoice = 0;
     this.voices = [];
+    this.ready = { menu: null, calm: null, battle: null }; // morceaux pré-calculés prêts à jouer
+    this.bufCur = null; // morceau pré-calculé en cours de lecture
+    this.rendering = null;
+    this.renderCount = 0;
+    if (opts.helper) return; // moteur auxiliaire de rendu hors ligne
+    const OAC = typeof window !== 'undefined' && (window.OfflineAudioContext || window.webkitOfflineAudioContext);
+    this.canPrerender = !!(OAC && OAC.prototype && typeof OAC.prototype.suspend === 'function');
     if (typeof speechSynthesis !== 'undefined') {
       const load = () => { this.voices = speechSynthesis.getVoices().filter((v) => /^fr/i.test(v.lang)); };
       load();
@@ -91,15 +102,16 @@ export class AudioEngine {
   get voiceVol() { return this._vv; }
 
   // ------------------------------------------------------------------ graphe audio
-  init(offline = null) {
+  init(offline = null, opts = {}) {
     if (this.ctx) { if (this.ctx.state === 'suspended' && this.ctx.resume) this.ctx.resume(); return; }
+    const musicOnly = !!opts.musicOnly;
     const AC = typeof window !== 'undefined' && (window.AudioContext || window.webkitAudioContext);
     if (!AC && !offline) return;
     const ctx = this.ctx = offline || new AC();
     this.offline = !!offline;
     // maître : compresseur + limiteur
     this.master = ctx.createGain();
-    this.master.gain.value = this.muted ? 0 : 0.72;
+    this.master.gain.value = musicOnly ? 1 : this.muted ? 0 : 0.72;
     const comp = ctx.createDynamicsCompressor();
     comp.threshold.value = -18; comp.ratio.value = 3.5; comp.attack.value = 0.005; comp.release.value = 0.18;
     const lim = ctx.createDynamicsCompressor();
@@ -108,15 +120,19 @@ export class AudioEngine {
     const lowS = ctx.createBiquadFilter(); lowS.type = 'lowshelf'; lowS.frequency.value = 140; lowS.gain.value = -5;
     const presence = ctx.createBiquadFilter(); presence.type = 'peaking'; presence.frequency.value = 2800; presence.Q.value = 0.7; presence.gain.value = 2.5;
     const highS = ctx.createBiquadFilter(); highS.type = 'highshelf'; highS.frequency.value = 7000; highS.gain.value = 4;
-    this.master.connect(lowS); lowS.connect(presence); presence.connect(highS); highS.connect(comp); comp.connect(lim); lim.connect(ctx.destination);
+    // (rendu hors ligne de la musique : le traitement final se fera à la lecture)
+    if (musicOnly) this.master.connect(ctx.destination);
+    else { this.master.connect(lowS); lowS.connect(presence); presence.connect(highS); highS.connect(comp); comp.connect(lim); lim.connect(ctx.destination); }
     // réverbération
     this.reverb = ctx.createConvolver();
     this.reverb.buffer = this.impulse(2.4, 2.6);
     const rv = ctx.createGain(); rv.gain.value = 0.28;
     this.reverb.connect(rv); rv.connect(this.master);
     // bus musique
-    this.music = ctx.createGain(); this.music.gain.value = this.musicVol;
+    this.music = ctx.createGain(); this.music.gain.value = musicOnly ? 1 : this.musicVol;
     this.music.connect(this.master);
+    // lecture des morceaux pré-calculés (ils contiennent déjà leur réverbération et leur écho)
+    this.bufBus = ctx.createGain(); this.bufBus.connect(this.music);
     this.musicFade = ctx.createGain(); this.musicFade.gain.value = 1;
     this.musicFade.connect(this.music);
     const mrev = ctx.createGain(); mrev.gain.value = 0.5; this.musicFade.connect(mrev); mrev.connect(this.reverb);
@@ -159,10 +175,12 @@ export class AudioEngine {
       this.leadGtr = input;
     }
     // effets et voix
-    this.sfx = ctx.createGain(); this.sfx.gain.value = this.sfxVol;
-    this.sfx.connect(this.master);
-    const srev = ctx.createGain(); srev.gain.value = 0.22; this.sfx.connect(srev); srev.connect(this.reverb);
-    this.vox = ctx.createGain(); this.vox.gain.value = this._vv; this.vox.connect(this.sfx);
+    if (!musicOnly) {
+      this.sfx = ctx.createGain(); this.sfx.gain.value = this.sfxVol;
+      this.sfx.connect(this.master);
+      const srev = ctx.createGain(); srev.gain.value = 0.22; this.sfx.connect(srev); srev.connect(this.reverb);
+      this.vox = ctx.createGain(); this.vox.gain.value = this._vv; this.vox.connect(this.sfx);
+    }
     this.noise = ctx.createBuffer(1, ctx.sampleRate * 2, ctx.sampleRate);
     const d = this.noise.getChannelData(0);
     for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
@@ -207,11 +225,18 @@ export class AudioEngine {
   setScene(scene) {
     if (scene === this.scene) return;
     this.scene = scene;
+    // libère la mémoire des morceaux qui ne serviront pas tout de suite
+    if (scene === 'menu') this.ready.battle = null;
+    else this.ready.menu = null;
     this.transition();
   }
   setPhase(age) { this.age = age; }
   // gammes propres à la civilisation du joueur
-  setCiv(modes) { this.civModes = modes && modes.length ? modes : null; }
+  setCiv(modes) {
+    this.civModes = modes && modes.length ? modes : null;
+    const key = this.civModes ? this.civModes.join(',') : '';
+    for (const k of ['calm', 'battle']) { const p = this.ready[k]; if (p && p.modes && p.modes !== key) this.ready[k] = null; }
+  }
   combat(amount = 1) { this.tension = Math.min(10, this.tension + amount); }
 
   pickStyle() {
@@ -224,6 +249,7 @@ export class AudioEngine {
     if (!this.ctx) return;
     const now = this.ctx.currentTime;
     this.events = [];
+    this.stopBuffer(now, 0.35);
     this.musicFade.gain.cancelScheduledValues(now);
     this.musicFade.gain.setTargetAtTime(0, now, 0.35);
     this.nextPieceAt = now + 1.4;
@@ -237,17 +263,117 @@ export class AudioEngine {
     this.tension = Math.max(0, this.tension - 0.025);
     if (this.fadeBackAt && now >= this.fadeBackAt) { this.musicFade.gain.cancelScheduledValues(now); this.musicFade.gain.setTargetAtTime(1, now, 0.05); this.fadeBackAt = 0; }
     // une bataille éclate : on bascule vers un morceau de combat
-    if (this.currentStyle !== 'battle' && this.tension > 6 && this.scene === 'peace' && this.events.length && !this.fadeBackAt) { this.transition(); return; }
+    if (this.currentStyle !== 'battle' && this.tension > 6 && this.scene === 'peace' && (this.events.length || this.bufCur) && !this.fadeBackAt) { this.transition(); return; }
     // la bataille est finie depuis longtemps : retour au calme
     if (this.tension >= 0.5) this.calmSince = undefined;
     else if (this.currentStyle === 'battle' && this.calmSince === undefined) this.calmSince = now;
     if (this.calmSince !== undefined && now - this.calmSince > 25 && this.currentStyle === 'battle') { this.calmSince = undefined; this.transition(); return; }
-    if (!this.events.length && now >= this.nextPieceAt) this.compose(Math.max(now + 0.15, this.nextPieceAt));
-    const horizon = now + 0.5;
+    if (this.canPrerender) this.prerender();
+    // morceau suivant : pré-calculé s'il est prêt (enchaîné à l'échantillon près), sinon joué en direct
+    if (!this.events.length && now >= this.nextPieceAt - 0.35) {
+      const kind = KIND[this.pickStyle()];
+      if (kind && this.ready[kind]) this.playBuffer(kind, Math.max(now + 0.05, this.nextPieceAt));
+      else if (now >= this.nextPieceAt) this.compose(Math.max(now + 0.15, this.nextPieceAt));
+    }
+    // jeu en direct : notes préparées 0,8 s à l'avance pour absorber les ralentissements du jeu
+    const horizon = now + 0.8;
     while (this.events.length && this.events[0].t < horizon) {
       const ev = this.events.shift();
-      if (ev.t >= now - 0.05) { try { ev.fn(Math.max(ev.t, now)); } catch { /* note ignorée */ } }
+      if (ev.t >= now - 0.12) { try { ev.fn(Math.max(ev.t, now)); } catch { /* note ignorée */ } }
     }
+  }
+
+  // ------------------------------------------------------------------ morceaux pré-calculés
+  // La musique est entièrement synthétisée : jouée en direct, elle demande beaucoup de calcul et
+  // saccade dès que le jeu ralentit. On calcule donc les morceaux à l'avance, en arrière-plan,
+  // puis on les lit comme un simple enregistrement.
+  // morceaux à tenir prêts, par ordre de priorité
+  wantedKinds() {
+    // au menu, on prépare d'abord le premier morceau de la partie (le début de partie est le moment le plus chargé)
+    if (this.scene === 'menu') return ['calm', 'menu'];
+    if (this.scene !== 'peace') return [];
+    // en partie : le combat d'abord, sauf si le morceau calme en cours se termine bientôt
+    const now = this.ctx ? this.ctx.currentTime : 0;
+    const calmUrgent = !this.bufCur || this.bufCur.end - now < 45;
+    return calmUrgent ? ['calm', 'battle'] : ['battle', 'calm'];
+  }
+
+  prerender() {
+    if (this.rendering || !this.canPrerender) return;
+    const kind = this.wantedKinds().find((k) => !this.ready[k]);
+    if (!kind) return;
+    const style = kind === 'menu' ? 'menu' : kind === 'battle' ? 'battle' : (this.age || 0) >= 1 && this.renderCount % 2 === 1 ? 'build' : 'peace';
+    this.renderCount++;
+    const modes = this.civModes ? this.civModes.join(',') : '';
+    this.rendering = this.renderOffline(style)
+      .then((buf) => { if (this.wantedKinds().includes(kind)) this.ready[kind] = { buf, style, modes: kind === 'menu' ? '' : modes }; })
+      .catch((e) => { console.warn('Pré-calcul de la musique impossible, lecture en direct.', e); this.canPrerender = false; })
+      .finally(() => {
+        this.rendering = null;
+        // avant le premier clic (pas encore de son), on enchaîne seul les pré-calculs
+        if (!this.ctx) setTimeout(() => this.prerender(), 200);
+      });
+  }
+
+  // à appeler au chargement de la page : prépare la musique avant même le premier clic
+  warmup() { if (this.canPrerender && !this.rendering) this.prerender(); }
+
+  async renderOffline(style) {
+    const OAC = window.OfflineAudioContext || window.webkitOfflineAudioContext;
+    const sr = PRERENDER_RATE;
+    const eng = new AudioEngine({ helper: true });
+    eng.civModes = this.civModes;
+    eng.age = this.age;
+    eng.pieceCount = this.pieceCount + this.renderCount * 7;
+    // 1) composition (sur un contexte minuscule) pour connaître la durée du morceau
+    eng.init(new OAC(2, 128, sr), { musicOnly: true });
+    const end = eng.compose(0.05, style);
+    const events = eng.events;
+    eng.events = [];
+    // 2) rendu : les notes sont créées au fur et à mesure (pause toutes les 0,5 s de musique)
+    const ctx = new OAC(2, Math.ceil((end + 0.05) * sr), sr);
+    eng.ctx = null;
+    eng.init(ctx, { musicOnly: true });
+    if (eng.lastDelay) { eng.delayL.delayTime.value = eng.lastDelay; eng.delayR.delayTime.value = eng.lastDelay; }
+    let i = 0;
+    const feed = (until) => {
+      while (i < events.length && events[i].t < until) {
+        const ev = events[i++];
+        try { ev.fn(ev.t); } catch { /* note ignorée */ }
+      }
+    };
+    const STEP = 0.5;
+    feed(STEP * 2);
+    for (let t = STEP; t < end - 0.01; t += STEP) {
+      const at = t;
+      ctx.suspend(at).then(() => { feed(at + STEP * 2); ctx.resume(); });
+    }
+    return ctx.startRendering();
+  }
+
+  playBuffer(kind, at) {
+    const piece = this.ready[kind];
+    this.ready[kind] = null;
+    const src = this.ctx.createBufferSource();
+    src.buffer = piece.buf;
+    const g = this.gain(1);
+    src.connect(g); g.connect(this.bufBus);
+    src.start(at);
+    const cur = { src, g, style: piece.style, end: at + piece.buf.duration };
+    src.onended = () => { try { src.disconnect(); g.disconnect(); } catch { /* déjà déconnecté */ } if (this.bufCur === cur) this.bufCur = null; };
+    this.bufCur = cur;
+    this.currentStyle = piece.style;
+    this.pieceCount++;
+    this.nextPieceAt = cur.end;
+  }
+
+  stopBuffer(now, tc) {
+    const cur = this.bufCur;
+    if (!cur) return;
+    this.bufCur = null;
+    cur.g.gain.cancelScheduledValues(now);
+    cur.g.gain.setTargetAtTime(0, now, tc);
+    try { cur.src.stop(now + tc * 6); } catch { /* déjà arrêté */ }
   }
 
   // ------------------------------------------------------------------ composition
@@ -266,7 +392,7 @@ export class AudioEngine {
     const root = pick(S.roots);
     const N = mode.length;
     const deg = (d, oct = 0) => { const o = Math.floor(d / N), i = ((d % N) + N) % N; return root + mode[i] + 12 * (o + oct); };
-    if (this.delayL) { const dtm = st * 3; this.delayL.delayTime.setValueAtTime(dtm, start); this.delayR.delayTime.setValueAtTime(dtm, start); }
+    if (this.delayL) { const dtm = st * 3; this.lastDelay = dtm; this.delayL.delayTime.setValueAtTime(dtm, start); this.delayR.delayTime.setValueAtTime(dtm, start); }
     const ev = [];
     const at = (t, fn) => ev.push({ t, fn });
 
