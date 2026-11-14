@@ -64,28 +64,35 @@
       <h1>Aube des Royaumes</h1>
       <p class="sub">Stratégie en temps réel — bâtissez, récoltez, conquérez.</p>
       <div class="divider"></div>
+      <div class="mode-tabs" role="tablist">
+        <button id="tab-solo" class="tab on" role="tab" aria-selected="true">Solo</button>
+        <button id="tab-online" class="tab" role="tab" aria-selected="false">En ligne</button>
+      </div>
       <div class="form">
+        <label class="online-only">Votre pseudo
+          <input id="mp-name" maxlength="16" placeholder="Votre nom" autocomplete="nickname">
+        </label>
         <label>Votre civilisation
           <select id="opt-civ"></select>
         </label>
-        <label>Civilisation adverse
+        <label class="solo-only">Civilisation adverse
           <select id="opt-civ-ai"></select>
         </label>
-        <label>Difficulté de l'adversaire
+        <label class="solo-only">Difficulté de l'adversaire
           <select id="opt-diff">
             <option value="facile">Facile</option>
             <option value="normal" selected>Normal</option>
             <option value="difficile">Difficile</option>
           </select>
         </label>
-        <label>Taille de la carte
+        <label class="host-setting">Taille de la carte
           <select id="opt-size">
             <option value="72">Petite (72×72)</option>
             <option value="96" selected>Moyenne (96×96)</option>
             <option value="128">Grande (128×128)</option>
           </select>
         </label>
-        <label>Ressources de départ
+        <label class="host-setting">Ressources de départ
           <select id="opt-res">
             <option value="standard" selected>Standard</option>
             <option value="riche">Riches</option>
@@ -100,12 +107,31 @@
             <option value="2d">Classique (2D)</option>
           </select>
         </label>
-        <label>Graine de la carte
+        <label class="solo-only">Graine de la carte
           <input id="opt-seed" type="number" placeholder="aléatoire">
         </label>
       </div>
       <div id="civ-card" class="civ-card"></div>
-      <button id="start-btn" class="big">Lancer la partie</button>
+      <button id="start-btn" class="big solo-only">Lancer la partie</button>
+      <div id="mp" class="online-only">
+        <div id="mp-home" class="mp-row">
+          <button id="mp-create" class="big">Créer un salon</button>
+          <div class="mp-join">
+            <input id="mp-code" maxlength="5" placeholder="CODE" autocomplete="off" autocapitalize="characters" spellcheck="false" aria-label="Code du salon">
+            <button id="mp-join">Rejoindre</button>
+          </div>
+        </div>
+        <div id="mp-lobby" class="hidden">
+          <div class="mp-code-box"><span>Code du salon</span><b id="mp-code-show">·····</b><button id="mp-share" class="ghost">Partager</button></div>
+          <ul id="mp-players"></ul>
+          <p id="mp-hint" class="mp-hint"></p>
+          <div class="mp-row">
+            <button id="mp-start" class="big" disabled>Lancer la partie</button>
+            <button id="mp-leave" class="ghost">Quitter le salon</button>
+          </div>
+        </div>
+        <p id="mp-status" class="mp-status" role="status"></p>
+      </div>
       <details>
         <summary>Commandes</summary>
         <ul class="help help-touch">
@@ -133,12 +159,13 @@
 
   <div id="pause" class="overlay hidden">
     <div class="panel">
-      <h2>Pause</h2>
+      <h2 id="pause-title">Pause</h2>
+      <p id="pause-note" class="mp-hint hidden">Partie en ligne : le jeu continue pendant que ce menu est ouvert.</p>
       <div class="form audio-form">
         <label>Musique <input id="vol-music" type="range" min="0" max="1" step="0.05"></label>
         <label>Effets sonores <input id="vol-sfx" type="range" min="0" max="1" step="0.05"></label>
         <label>Voix des unités <input id="vol-voice" type="range" min="0" max="1" step="0.05"></label>
-        <label>Vitesse du jeu
+        <label class="speed-label">Vitesse du jeu
           <select id="speed-pause">
             <option value="0.75">×0,75</option>
             <option value="1" selected>×1</option>
@@ -151,6 +178,8 @@
       <button id="quit-btn" class="ghost">Abandonner la partie</button>
     </div>
   </div>
+
+  <div id="mp-wait" class="glass hidden" role="status"><span id="mp-wait-text"></span><button id="mp-wait-end" class="hidden">Terminer la partie</button></div>
 
   <div id="end" class="overlay hidden">
     <div class="panel">

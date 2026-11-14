@@ -1,5 +1,6 @@
 // Génération procédurale de la carte : lacs, forêts, mines, positions de départ.
 import { TERRAIN } from './config.js';
+import { hypot, dsin, dcos } from './dmath.js';
 
 export function mulberry32(seed) {
   let a = seed >>> 0;
@@ -45,7 +46,7 @@ export function generateMap(game, { size, numPlayers }) {
   const forest = makeNoise(rand, W, H, 9);
   const forest2 = makeNoise(rand, W, H, 4);
   const starts = startPositions(size, numPlayers, rand);
-  const nearStart = (x, y, r) => starts.some(([sx, sy]) => Math.hypot(x - sx, y - sy) < r);
+  const nearStart = (x, y, r) => starts.some(([sx, sy]) => hypot(x - sx, y - sy) < r);
 
   // Terrain
   for (let y = 0; y < H; y++) {
@@ -72,7 +73,7 @@ export function generateMap(game, { size, numPlayers }) {
   for (let y = 0; y < H; y++) {
     for (let x = 0; x < W; x++) {
       if (map.terrain[y * W + x] !== TERRAIN.GRASS) continue;
-      const d = Math.min(...starts.map(([sx, sy]) => Math.hypot(x - sx, y - sy)));
+      const d = Math.min(...starts.map(([sx, sy]) => hypot(x - sx, y - sy)));
       if (d < 4 + forest2(x, y) * 3) map.terrain[y * W + x] = TERRAIN.DIRT;
     }
   }
@@ -112,7 +113,7 @@ export function generateMap(game, { size, numPlayers }) {
     for (let tries = 0; tries < 80; tries++) {
       const a = rand() * Math.PI * 2;
       const d = dmin + rand() * (dmax - dmin);
-      const x = Math.round(sx + Math.cos(a) * d), y = Math.round(sy + Math.sin(a) * d);
+      const x = Math.round(sx + dcos(a) * d), y = Math.round(sy + dsin(a) * d);
       let ok = true;
       for (let dy = -clearR; dy <= clearR && ok; dy++) for (let dx = -clearR; dx <= clearR; dx++) {
         if (!free(x + dx, y + dy)) { ok = false; break; }
@@ -128,7 +129,7 @@ export function generateMap(game, { size, numPlayers }) {
     let sheep = 0;
     for (let tries = 0; tries < 200 && sheep < 8; tries++) {
       const a = rand() * Math.PI * 2, d = 4 + rand() * 3;
-      const x = Math.round(sx + Math.cos(a) * d), y = Math.round(sy + Math.sin(a) * d);
+      const x = Math.round(sx + dcos(a) * d), y = Math.round(sy + dsin(a) * d);
       if (free(x, y) && free(x + 1, y) && free(x, y + 1) && free(x - 1, y) && free(x, y - 1)) { game.createResource('sheep', x, y); sheep++; }
     }
     placeAround('berries', sx, sy, 7, 9, 6, 2);
@@ -190,7 +191,7 @@ function ensureConnectivity(game, starts) {
     if (seen[(ty + 3) * W + tx]) continue;
     // creuse un couloir en ligne droite
     const [sx, sy] = starts[0];
-    const steps = Math.ceil(Math.hypot(tx - sx, ty - sy));
+    const steps = Math.ceil(hypot(tx - sx, ty - sy));
     for (let i = 0; i <= steps; i++) {
       const cx = Math.round(sx + (tx - sx) * i / steps), cy = Math.round(sy + (ty - sy) * i / steps);
       for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {

@@ -5,6 +5,7 @@ import {
 } from './config.js';
 import { PathFinder, distToRect } from './pathfinding.js';
 import { generateMap, mulberry32 } from './map.js';
+import { hypot } from './dmath.js';
 
 const SCAN_INTERVAL = 0.5;
 
@@ -179,7 +180,7 @@ export class Game {
         for (let x = rect.tx - ring; x < rect.tx + s + ring; x++) {
           if (x > rect.tx - ring && x < rect.tx + s + ring - 1 && y > rect.ty - ring && y < rect.ty + s + ring - 1) continue;
           if (!this.map.walkable(x, y)) continue;
-          const d = Math.hypot(x + 0.5 - nearX, y + 0.5 - nearY);
+          const d = hypot(x + 0.5 - nearX, y + 0.5 - nearY);
           if (d < bestD) { bestD = d; best = { x: x + 0.5, y: y + 0.5 }; }
         }
       }
@@ -247,7 +248,7 @@ export class Game {
   }
 
   distTo(u, e) {
-    if (e.kind === 'unit') return Math.max(0, Math.hypot(e.x - u.x, e.y - u.y) - e.radius);
+    if (e.kind === 'unit') return Math.max(0, hypot(e.x - u.x, e.y - u.y) - e.radius);
     return distToRect(u.x, u.y, this.rectOf(e));
   }
 
@@ -621,7 +622,7 @@ export class Game {
     while (remaining > 0 && u.pathI < u.path.length) {
       const wp = u.path[u.pathI];
       const dx = wp.x - u.x, dy = wp.y - u.y;
-      const d = Math.hypot(dx, dy);
+      const d = hypot(dx, dy);
       if (d > 0.01) u.dir = dx - dy >= 0 ? 1 : -1;
       if (d <= remaining) { u.x = wp.x; u.y = wp.y; u.pathI++; remaining -= d; }
       else { u.x += dx / d * remaining; u.y += dy / d * remaining; remaining = 0; }
@@ -638,7 +639,7 @@ export class Game {
   // Se rapproche d'une entité. Retourne true (à portée), false (en route) ou null (inaccessible)
   // vol direct (unités aériennes)
   flyTo(u, x, y, dt) {
-    const dx = x - u.x, dy = y - u.y, d = Math.hypot(dx, dy);
+    const dx = x - u.x, dy = y - u.y, d = hypot(dx, dy);
     const sp = this.unitStats(u.owner, u.type).speed * dt;
     if (d < 0.01) { u.moving = false; return true; }
     u.dir = dx - dy >= 0 ? 1 : -1;
@@ -781,7 +782,7 @@ export class Game {
     for (const e of this.units) {
       if (e.dead || !this.isEnemy(u.owner, e.owner) || st.onlyBuildings) continue;
       if (!this.canHit(st, e)) continue;
-      const d = Math.hypot(e.x - u.x, e.y - u.y);
+      const d = hypot(e.x - u.x, e.y - u.y);
       if (d > radius) continue;
       if (st.minRange && d < st.minRange) continue;
       const score = d + (e.type === 'villager' ? 1.5 : 0);
@@ -845,7 +846,7 @@ export class Game {
   fire(owner, x, y, target, st, kind, from = null) {
     const speed = { arrow: 9, javelin: 8, bullet: 38, shell: 11, laser: 80, pebble: 9, bomb: 1 }[kind] || 5;
     const tx = target.x, ty = target.y;
-    const d = Math.hypot(tx - x, ty - y);
+    const d = hypot(tx - x, ty - y);
     const sound = { arrow: 'arrow', javelin: 'arrow', pebble: 'arrow', bullet: st.rof < 0.6 ? 'mg' : 'gunshot', shell: 'cannon', laser: 'laser', bomb: 'bombdrop' }[kind] || 'launch';
     this.sfx(sound, x, y);
     const dur = kind === 'bomb' ? 0.75 : kind === 'laser' ? 0.1 : Math.max(kind === 'bullet' ? 0.05 : 0.15, d / speed);
@@ -872,7 +873,7 @@ export class Game {
           this.sfx('boom', p.tx, p.ty);
           const targets = [...this.units, ...this.buildings].filter((e) => !e.dead && this.isEnemy(p.owner, e.owner));
           for (const e of targets) {
-            const d = e.kind === 'unit' ? Math.hypot(e.x - p.tx, e.y - p.ty) : distToRect(p.tx, p.ty, this.rectOf(e));
+            const d = e.kind === 'unit' ? hypot(e.x - p.tx, e.y - p.ty) : distToRect(p.tx, p.ty, this.rectOf(e));
             if (d <= p.st.splash) this.damage(e, this.calcDamage(p.st, e) * (d < 0.4 ? 1 : 0.5), p.owner, null);
           }
         } else if (t) {
@@ -928,14 +929,14 @@ export class Game {
         if (b.dead || b.owner !== owner || !BUILDINGS[b.type].farm || !b.built || b.id === excludeId) continue;
         const f = this.get(b.farmer);
         if (f && f.order && f.order.target === b.id) continue;
-        const d = Math.hypot(b.x - x, b.y - y);
+        const d = hypot(b.x - x, b.y - y);
         if (d < bestD) { bestD = d; best = b; }
       }
       return best;
     }
     for (const r of this.resources) {
       if (r.dead || r.type !== gk || r.id === excludeId) continue;
-      const d = Math.hypot(r.x - x, r.y - y);
+      const d = hypot(r.x - x, r.y - y);
       if (d < bestD) { bestD = d; best = r; }
     }
     return best;
@@ -1082,7 +1083,7 @@ export class Game {
       let best = null, bestD = 10;
       for (const rt of def.drop) {
         const r = this.findNearestResource(rt, kinds[rt], b.x, b.y, bestD, u.owner);
-        if (r) { const d = Math.hypot(r.x - b.x, r.y - b.y); if (d < bestD) { bestD = d; best = r; } }
+        if (r) { const d = hypot(r.x - b.x, r.y - b.y); if (d < bestD) { bestD = d; best = r; } }
       }
       if (best) this.orderGather(u, best);
     }

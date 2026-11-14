@@ -7,6 +7,8 @@ import { AudioEngine } from './audio.js';
 import { TICK, CIVS, CIV_IDS, UNITS } from './config.js';
 import { Renderer3D, webglAvailable } from './r3d/renderer3d.js';
 import { resIconURL, icon } from './icons.js';
+import { Lockstep, createNetGame } from './net.js';
+import { setupLobby } from './lobby.js';
 
 const $ = (id) => document.getElementById(id);
 window.__adrReady = true; // le jeu a démarré (voir le message de secours dans index.html)
@@ -61,6 +63,7 @@ for (const sel of [civSel, civAiSel]) {
 }
 try { civSel.value = localStorage.getItem('adr_civ') || 'francs'; } catch { civSel.value = 'francs'; }
 civAiSel.value = 'random';
+const RICH_START = { food: 1000, wood: 1000, gold: 800, stone: 600 };
 const pickCiv = (v, not) => (v === 'random' ? CIV_IDS.filter((c) => c !== not)[Math.floor(Math.random() * (CIV_IDS.length - 1))] : v);
 
 function updateCivCard() {
@@ -150,33 +153,73 @@ function start() {
     stopDemo();
     const game = new Game({
       seed, size, players: 2, humanPlayer: 0, civs: [myCiv, aiCiv],
-      startRes: rich ? { food: 1000, wood: 1000, gold: 800, stone: 600 } : undefined,
+      startRes: rich ? RICH_START : undefined,
     });
-    game.sound = true;
-    const renderer = makeRenderer(game, 0, q, freshCanvas('game'));
-    const ui = new UI(game, renderer, 0, audio);
-    renderer.onAdapt = () => ui.msg('Affichage allégé pour garder un jeu fluide.');
     const ai = new AI(game, 1, difficulty);
-    const me = game.players[0];
-    renderer.centerOn(me.startX + 1, me.startY + 1);
-    if (state) { state.stop = true; state.ui.destroy(); if (state.renderer.dispose) state.renderer.dispose(); }
-    state = { game, renderer, ui, ai, acc: 0, last: performance.now(), speed: +$('speed').value, paused: false, stop: false, seed };
-    ui.onPause = () => setPaused(!state.paused);
-    $('menu').classList.add('hidden');
-    document.querySelector('.credits').classList.add('hidden');
-    $('end').classList.add('hidden');
-    $('loading').classList.add('hidden');
-    $('topbar').classList.remove('hidden');
-    $('bottom').classList.remove('hidden');
-    ui.setupMinimap();
-    const tc = game.buildings.find((b) => b.owner === 0);
-    ui.selected = new Set([tc.id]);
-    ui.msg(`${CIVS[myCiv].realm} contre ${CIVS[aiCiv].realm} — carte n°${seed}. Bonne partie !`, 'good');
-    audio.setCiv(CIVS[myCiv].music);
-    audio.setScene('peace');
-    requestAnimationFrame((t) => loop(state, t));
-    window.__game = state; // pratique pour le débogage dans la console
+    beginGame({ game, me: 0, ai, seed, q, civ: myCiv, intro: `${CIVS[myCiv].realm} contre ${CIVS[aiCiv].realm} — carte n°${seed}. Bonne partie !` });
   }, 60);
+}
+
+// ------------------------------------------------------------------ partie en ligne
+const lobby = setupLobby({
+  getSettings: () => ({ civ: civSel.value, size: +$('opt-size').value, rich: $('opt-res').value === 'riche' }),
+  onStart: startOnline,
+});
+
+function startOnline({ seed, size, rich, players, me }) {
+  audio.init();
+  audio.sfxPlay('click');
+  goFullscreen();
+  $('loading').classList.remove('hidden');
+  setTimeout(() => {
+    stopDemo();
+    const civs = players.map((p) => p.civ), names = players.map((p) => p.name);
+    const game = createNetGame({ seed, size, civs, names, me, startRes: rich ? RICH_START : undefined });
+    const net = new Lockstep({ game, me, names, send: (m) => lobby.send(m) });
+    lobby.onNet = (m) => net.receive(m);
+    beginGame({ game, me, net, seed, q: quality(), civ: civs[me], intro: `${names.join(' contre ')} — bonne partie !` });
+  }, 60);
+}
+
+// mise en place commune aux parties solo et en ligne
+function beginGame({ game, me, ai = null, net = null, seed, q, civ, intro }) {
+  game.sound = true;
+  const renderer = makeRenderer(game, me, q, freshCanvas('game'));
+  const ui = new UI(game, renderer, me, audio);
+  renderer.onAdapt = () => ui.msg('Affichage allégé pour garder un jeu fluide.');
+  const mine = game.players[me];
+  renderer.centerOn(mine.startX + 1, mine.startY + 1);
+  if (state) { state.stop = true; state.ui.destroy(); if (state.renderer.dispose) state.renderer.dispose(); }
+  state = { game, renderer, ui, ai, net, me, acc: 0, last: performance.now(), speed: net ? 1 : +$('speed').value, paused: false, stop: false, seed };
+  ui.onPause = () => setPaused(!state.paused);
+  document.body.classList.toggle('in-mp', !!net);
+  $('pause-title').textContent = net ? 'Menu' : 'Pause';
+  $('pause-note').classList.toggle('hidden', !net);
+  $('quit-btn').textContent = 'Abandonner la partie';
+  if (net) net.onDesync = (who) => ui.msg(`Attention : votre partie et celle de ${who} ne sont plus identiques.`, 'alert');
+  $('menu').classList.add('hidden');
+  document.querySelector('.credits').classList.add('hidden');
+  $('end').classList.add('hidden');
+  $('loading').classList.add('hidden');
+  $('topbar').classList.remove('hidden');
+  $('bottom').classList.remove('hidden');
+  ui.setupMinimap();
+  const tc = game.buildings.find((b) => b.owner === me && b.type === 'town_center') || game.buildings.find((b) => b.owner === me);
+  if (tc) ui.selected = new Set([tc.id]);
+  ui.msg(intro, 'good');
+  audio.setCiv(CIVS[civ].music);
+  audio.setScene('peace');
+  requestAnimationFrame((t) => loop(state, t));
+  if (net) {
+    // en ligne, la partie continue si l'onglet passe en arrière-plan (le navigateur n'y dessine plus d'images)
+    const s = state;
+    s.bgTimer = setInterval(() => {
+      if (s.stop) { clearInterval(s.bgTimer); return; }
+      const t = performance.now();
+      if (t - s.last > 400) { const dt = Math.min(1, (t - s.last) / 1000); s.last = t; netStep(s, dt); if (s.game.winner !== null && !s.ended) { s.ended = true; showEnd(s); } }
+    }, 500);
+  }
+  window.__game = state; // pratique pour le débogage dans la console
 }
 
 function setPaused(p) {
@@ -188,9 +231,10 @@ function setPaused(p) {
 
 function loop(s, now) {
   if (s.stop) return;
-  const dt = Math.min(0.25, (now - s.last) / 1000);
+  const dt = Math.min(s.net ? 1 : 0.25, (now - s.last) / 1000);
   s.last = now;
-  if (!s.paused && s.game.winner === null) {
+  if (s.net) netStep(s, dt, now);
+  else if (!s.paused && s.game.winner === null) {
     s.acc += dt * s.speed;
     let steps = 0;
     while (s.acc >= TICK && steps < 10) {
@@ -206,12 +250,46 @@ function loop(s, now) {
   requestAnimationFrame((t) => loop(s, t));
 }
 
+// en ligne : la partie n'avance que si les ordres de tous les joueurs sont arrivés
+function netStep(s, dt) {
+  const net = s.net;
+  if (s.game.winner === null) {
+    s.acc += dt * (net.lag() > 2 ? 1.6 : 1); // un peu plus vite si l'on est en retard sur les autres
+    let steps = 0;
+    while (s.acc >= TICK && steps < 40) {
+      if (!net.step()) { s.acc = Math.min(s.acc, TICK); break; }
+      s.acc -= TICK;
+      steps++;
+    }
+  }
+  // bandeau d'attente quand un joueur ne répond plus
+  const p = s.game.winner === null ? net.waitingPlayer() : -1;
+  const box = $('mp-wait');
+  box.classList.toggle('hidden', p < 0);
+  if (p >= 0) {
+    const gone = !lobby.present(p);
+    const text = gone ? `${net.names[p]} semble avoir quitté la partie.` : `En attente de ${net.names[p]}…`;
+    if ($('mp-wait-text').textContent !== text) $('mp-wait-text').textContent = text;
+    $('mp-wait-end').classList.toggle('hidden', !gone);
+  }
+}
+
+$('mp-wait-end').addEventListener('click', () => {
+  if (!state || !state.net || state.game.winner !== null) return;
+  state.game.winner = state.me;
+  state.game.victoryReason = 'left';
+  $('mp-wait').classList.add('hidden');
+});
+
 function showEnd(s) {
   const g = s.game;
-  const won = g.winner === 0;
+  const won = g.winner === s.me;
+  if (s.net) $('mp-wait').classList.add('hidden');
+  if (s.net && won && !g.victoryReason && g.players.some((p) => p.resigned)) g.victoryReason = 'resign';
   audio.sfxPlay(won ? 'victory' : 'defeat');
   audio.setScene(won ? 'victory' : 'defeat');
-  const reason = g.victoryReason === 'space' ? ' — victoire scientifique' : g.victoryReason === 'wonder' ? ' — victoire par la merveille' : '';
+  const reasons = { space: ' — victoire scientifique', wonder: ' — victoire par la merveille', resign: ' — votre adversaire a abandonné', left: ' — votre adversaire a quitté la partie' };
+  const reason = reasons[g.victoryReason] || '';
   $('end-title').textContent = (won ? 'Victoire !' : 'Défaite…');
   $('end-stats').dataset.reason = reason;
   const rows = g.players.map((p) => `<tr><td style="color:${p.color}">${p.name}</td><td>${Object.values(p.stats.gathered).reduce((a, b) => a + b, 0)}</td><td>${p.stats.trained}</td><td>${p.stats.built}</td><td>${p.stats.kills}</td><td>${p.stats.losses}</td><td>${p.stats.razed}</td><td>${p.techs.size}</td></tr>`).join('');
@@ -228,6 +306,7 @@ function updateMusicBtn() { $('music-btn').classList.toggle('off', audio.muted);
 $('start-btn').addEventListener('click', start);
 window.__start = start;
 $('again-btn').addEventListener('click', () => {
+  if (state && state.net) { lobby.leave(); document.body.classList.remove('in-mp'); }
   $('end').classList.add('hidden');
   $('menu').classList.remove('hidden');
   $('topbar').classList.add('hidden');
@@ -241,7 +320,13 @@ $('resume-btn').addEventListener('click', () => setPaused(false));
 $('pause-btn').addEventListener('click', () => setPaused(!state.paused));
 $('quit-btn').addEventListener('click', () => {
   setPaused(false);
-  if (!state) return;
+  if (!state || state.game.winner !== null) return;
+  if (state.net) {
+    // en ligne : l'abandon est transmis et appliqué au même moment chez tous les joueurs
+    state.net.resign();
+    state.ui.msg('Abandon envoyé…', 'warn');
+    return;
+  }
   state.game.players[0].defeated = true;
   state.game.winner = 1;
 });
@@ -261,7 +346,7 @@ updateMusicBtn();
 window.addEventListener('pointerdown', () => { audio.init(); if (!state) audio.setScene('menu'); }, { once: true });
 
 // application en arrière-plan : la partie se met en pause et le son s'arrête
-window.__appPause = () => { if (state && !state.ended && !state.paused && state.game.winner === null) setPaused(true); audio.suspend(); };
+window.__appPause = () => { if (state && !state.net && !state.ended && !state.paused && state.game.winner === null) setPaused(true); audio.suspend(); };
 window.__appResume = () => audio.resume();
 document.addEventListener('visibilitychange', () => { if (document.hidden) window.__appPause(); else window.__appResume(); });
 // touche « retour » d'Android : annuler, puis pause ; « exit » quitte l'application

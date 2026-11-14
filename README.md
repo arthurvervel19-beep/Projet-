@@ -56,6 +56,34 @@ téléphone, branché sur le même Wi-Fi. Fonctionne aussi sur iPhone et iPad.
 | Construire | Choisir le bâtiment, toucher ou glisser pour le placer, valider avec le bouton vert ; pour un mur, glisser le long du tracé |
 | Touche « retour » d'Android | Annuler, puis pause ; quitte depuis le menu |
 
+## Jouer en ligne à deux
+
+Le jeu est publié sur **Vercel** (offre gratuite) à chaque mise à jour de la branche `main`.
+Dans le menu, onglet **En ligne** :
+
+1. Choisissez un pseudo et une civilisation.
+2. L'un des joueurs clique sur **Créer un salon** : un code de 5 caractères s'affiche (bouton
+   **Partager** pour l'envoyer par message).
+3. L'autre joueur tape ce code puis **Rejoindre**.
+4. L'hôte choisit la taille de la carte et les ressources, puis **Lancer la partie**.
+
+**Fonctionnement** : chaque navigateur calcule toute la partie ; les joueurs n'échangent que leurs
+ordres (« ces unités vont là »), par tours de 200 ms, exécutés au même moment chez tous
+(technique dite *lockstep*). Cela représente environ 5 petits messages par seconde et par joueur,
+ce qui tient largement dans l'offre gratuite de Supabase. Une empreinte de l'état de la partie est
+comparée chaque seconde : si les deux parties divergent, un avertissement s'affiche.
+
+**Serveur** : un projet Supabase dédié au jeu gère les salons et le
+canal temps réel. Les joueurs reçoivent un compte invité anonyme ; seuls les membres d'un salon
+peuvent lire ses informations et parler sur son canal ; un salon est fermé aux nouveaux venus dès
+le lancement. La structure de la base est dans `supabase/salons.sql`. La clé écrite dans
+`public/js/online-config.js` est la clé *publishable*, prévue pour être publique ; la clé secrète
+ne doit jamais apparaître dans le dépôt.
+
+**Limites actuelles** : deux joueurs par partie ; une page rechargée en cours de partie ne peut
+pas revenir dans la partie ; si un joueur ferme le jeu, l'autre peut terminer la partie après
+quelques secondes d'attente. Le mode solo, lui, fonctionne toujours sans connexion.
+
 ## Contenu
 
 - **Rendu 3D temps réel (WebGL, Three.js)** : lumière dorée et ombres douces, occlusion
@@ -173,6 +201,12 @@ public/vendor/       Three.js et modules de post-traitement (licence MIT)
 public/fonts/        polices Cinzel et Inter (licence SIL OFL)
 public/js/ui.js      souris, clavier, écran tactile, interface
 public/js/main.js    menu et boucle de jeu
+public/js/dmath.js   calculs identiques sur tous les navigateurs (distance, sinus, cosinus)
+public/js/net.js     multijoueur « lockstep » : tours, envoi des ordres, contrôle de synchronisation
+public/js/online.js  connexion Supabase : compte invité, salons, canal temps réel
+public/js/lobby.js   menu « En ligne » : création, code, salle d'attente, lancement
+public/vendor/supabase.js  client Supabase (licence MIT), chargé seulement en ligne
+supabase/salons.sql  structure de la base des salons et règles d'accès
 public/manifest.webmanifest, public/icons/  icône et réglages d'installation sur l'écran d'accueil
 android/             application Android : manifeste, activité WebView, icônes, script de fabrication
 test/                tests (node --test)
@@ -187,6 +221,10 @@ qu'ils suivent les mêmes règles.
 ```bash
 npm test
 ```
+
+Les tests du multijoueur simulent deux navigateurs reliés par un faux réseau (latence variable,
+messages perdus) pendant plusieurs minutes de jeu et vérifient que les deux parties restent
+identiques, que l'abandon est appliqué des deux côtés et qu'une divergence est bien détectée.
 
 Les tests génèrent des cartes, vérifient la récolte et font jouer l'IA contre elle-même
 pendant 16 minutes de jeu simulé, et vérifient la progression jusqu'à l'âge du Futur,
@@ -207,6 +245,7 @@ ou une carte graphique intégrée, choisissez **Équilibrée** ou **Performance*
 
 ## Pistes d'évolution
 
-- Mode multijoueur en réseau (WebSocket via le serveur Node)
+- Multijoueur à 3 ou 4 joueurs, équipes et IA alliées en ligne
+- Revenir dans une partie en ligne après avoir rechargé la page
 - Sauvegarde et chargement des parties
 - Unités navales, moines et conversion

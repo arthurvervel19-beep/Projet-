@@ -1,5 +1,6 @@
 // Intelligence artificielle de l'adversaire. Elle utilise les mêmes commandes que le joueur.
 import { UNITS, BUILDINGS, TECHS, AGES, CIVS } from './config.js';
+import { hypot, dsin, dcos } from './dmath.js';
 
 const DIFFICULTY = {
   facile: { gather: 0.8, firstAttack: 720, think: 2.0, maxVil: 30, wave: 6 },
@@ -103,7 +104,7 @@ export class AI {
       for (let tries = 0; tries < 160; tries++) {
         const a = g.rand() * Math.PI * 2;
         const d = lo + g.rand() * (hi - lo);
-        const tx = Math.round(cx + Math.cos(a) * d - s / 2), ty = Math.round(cy + Math.sin(a) * d - s / 2);
+        const tx = Math.round(cx + dcos(a) * d - s / 2), ty = Math.round(cy + dsin(a) * d - s / 2);
         if (!g.canPlace(this.id, type, tx, ty)) continue;
         if (!BUILDINGS[type].farm && !this.hasMargin(tx, ty, s)) continue;
         const score = d + g.rand() * 2;
@@ -133,7 +134,7 @@ export class AI {
       if (u.order && u.order.kind === 'build') continue;
       const idle = !u.order ? -20 : 0;
       const busyGold = u.order && u.order.resType === 'gold' ? 10 : 0;
-      const score = Math.hypot(u.x - nearX, u.y - nearY) + idle + busyGold;
+      const score = hypot(u.x - nearX, u.y - nearY) + idle + busyGold;
       if (score < bestScore) { bestScore = score; best = u; }
     }
     return best;
@@ -181,7 +182,7 @@ export class AI {
     if (this.vils.length >= 10) this.ensureCamp('mill', 'berries', 14);
     if (p.age >= 1 && this.vils.length >= 18) this.ensureCamp('mining_camp', 'stone', 20, true);
     // fermes quand les baies s'épuisent
-    const berries = g.resources.filter((r) => (r.type === 'berries' || r.type === 'sheep') && Math.hypot(r.x - base.x, r.y - base.y) < 16).length;
+    const berries = g.resources.filter((r) => (r.type === 'berries' || r.type === 'sheep') && hypot(r.x - base.x, r.y - base.y) < 16).length;
     const farms = this.count('farm');
     const wantFarms = Math.max(0, Math.round(this.foodTarget() - berries * 0.6));
     if (farms < wantFarms && !this.underConstruction('farm') && this.spare({ wood: 60 })) {
@@ -205,14 +206,14 @@ export class AI {
     let res = null, bestD = maxD + 10;
     for (const r of g.resources) {
       if (r.dead || r.type !== gk) continue;
-      const d = Math.hypot(r.x - base.x, r.y - base.y);
+      const d = hypot(r.x - base.x, r.y - base.y);
       if (d < bestD) { bestD = d; res = r; }
     }
     if (!res) return;
     // un dépôt existe-t-il déjà près de cette ressource ?
     const near = this.blds.some((b) => {
       const def = BUILDINGS[b.type];
-      return def.drop && def.drop.includes(BUILDINGS[type].drop[0]) && (extra ? def.drop.includes(gk) : true) && Math.hypot(b.x - res.x, b.y - res.y) < 6;
+      return def.drop && def.drop.includes(BUILDINGS[type].drop[0]) && (extra ? def.drop.includes(gk) : true) && hypot(b.x - res.x, b.y - res.y) < 6;
     });
     if (near) return;
     if (gk === 'tree' && this.count('lumber_camp') >= 3) return;
@@ -386,14 +387,14 @@ export class AI {
   defend() {
     const g = this.g;
     const threats = g.units.filter((u) => !u.dead && g.isEnemy(this.id, u.owner) &&
-      this.blds.some((b) => Math.hypot(b.x - u.x, b.y - u.y) < 12));
+      this.blds.some((b) => hypot(b.x - u.x, b.y - u.y) < 12));
     if (!threats.length) return false;
     const defenders = this.army.filter((u) => !u.order || u.order.kind !== 'attack' || !u.order.defending);
     for (const u of defenders) {
       let best = null, bestD = Infinity;
       for (const t of threats) {
         if (UNITS[u.type].onlyBuildings) continue;
-        const d = Math.hypot(t.x - u.x, t.y - u.y);
+        const d = hypot(t.x - u.x, t.y - u.y);
         if (d < bestD) { bestD = d; best = t; }
       }
       if (best && (bestD < 30 || !this.attacking)) {
@@ -428,9 +429,9 @@ export class AI {
       // rassemblement devant la base
       const enemy = this.pickTarget();
       if (!enemy) return;
-      const dx = enemy.x - this.base.x, dy = enemy.y - this.base.y, d = Math.hypot(dx, dy) || 1;
+      const dx = enemy.x - this.base.x, dy = enemy.y - this.base.y, d = hypot(dx, dy) || 1;
       const rx = this.base.x + dx / d * 7, ry = this.base.y + dy / d * 7;
-      const far = idleArmy.filter((u) => Math.hypot(u.x - rx, u.y - ry) > 5);
+      const far = idleArmy.filter((u) => hypot(u.x - rx, u.y - ry) > 5);
       if (far.length) this.issue({ type: 'move', ids: far.map((u) => u.id), x: rx, y: ry });
     }
   }
@@ -440,13 +441,13 @@ export class AI {
     let best = null, bestD = Infinity;
     for (const b of g.buildings) {
       if (b.dead || !g.isEnemy(this.id, b.owner) || BUILDINGS[b.type].wall) continue;
-      const d = Math.hypot(b.x - this.base.x, b.y - this.base.y) - (b.type === 'town_center' ? 4 : 0);
+      const d = hypot(b.x - this.base.x, b.y - this.base.y) - (b.type === 'town_center' ? 4 : 0);
       if (d < bestD) { bestD = d; best = b; }
     }
     if (best) return best;
     for (const u of g.units) {
       if (u.dead || !g.isEnemy(this.id, u.owner)) continue;
-      const d = Math.hypot(u.x - this.base.x, u.y - this.base.y);
+      const d = hypot(u.x - this.base.x, u.y - this.base.y);
       if (d < bestD) { bestD = d; best = u; }
     }
     return best;

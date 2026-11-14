@@ -1,3 +1,4 @@
+import { hypot } from './dmath.js';
 // Recherche de chemin A* sur une grille 8 directions, avec lissage du trajet.
 
 const SQRT2 = Math.SQRT2;
@@ -41,7 +42,7 @@ class MinHeap {
 export function distToRect(px, py, r) {
   const dx = Math.max(r.x0 - px, 0, px - r.x1);
   const dy = Math.max(r.y0 - py, 0, py - r.y1);
-  return Math.hypot(dx, dy);
+  return hypot(dx, dy);
 }
 
 export class PathFinder {
@@ -115,7 +116,7 @@ export class PathFinder {
   // Vérifie qu'une ligne droite est praticable (avec une petite marge)
   lineWalkable(ax, ay, bx, by) {
     const map = this.map;
-    const d = Math.hypot(bx - ax, by - ay);
+    const d = hypot(bx - ax, by - ay);
     const steps = Math.ceil(d / 0.2);
     const m = 0.22;
     for (let i = 0; i <= steps; i++) {
