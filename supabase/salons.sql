@@ -150,3 +150,71 @@ create policy "membres du salon envoient" on realtime.messages
     and (select realtime.topic()) like 'salon:%'
     and (select public.est_membre(substring((select realtime.topic()) from 7)))
   );
+
+-- ---------------------------------------------------------------------------------------------
+-- Transfert de parties solo entre appareils (migration « sauvegardes_transfert », 14/11/2026)
+-- Un code de 6 caractères donne accès à une sauvegarde ; celui qui le connaît peut la récupérer
+-- et la mettre à jour. Aucun accès direct à la table : tout passe par les deux fonctions.
+
+create table public.sauvegardes (
+  code text primary key check (code ~ '^[A-Z2-9]{6}$'),
+  auteur uuid references auth.users (id) on delete set null,
+  donnees text not null check (length(donnees) <= 3000000),
+  libelle text check (length(libelle) <= 120),
+  maj_le timestamptz not null default now()
+);
+create index sauvegardes_auteur_idx on public.sauvegardes (auteur);
+create index sauvegardes_maj_idx on public.sauvegardes (maj_le);
+alter table public.sauvegardes enable row level security;
+
+create or replace function public.envoyer_sauvegarde(p_code text, p_donnees text, p_libelle text)
+returns text language plpgsql security definer set search_path = ''
+as $$
+declare
+  v_uid uuid := auth.uid();
+  v_code text := upper(trim(coalesce(p_code, '')));
+  v_alpha constant text := 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  i int;
+begin
+  if v_uid is null then raise exception 'connexion requise'; end if;
+  if p_donnees is null or length(p_donnees) > 3000000 then raise exception 'sauvegarde trop volumineuse'; end if;
+  delete from public.sauvegardes where maj_le < now() - interval '60 days';
+  if v_code ~ '^[A-Z2-9]{6}$' then
+    update public.sauvegardes set donnees = p_donnees, libelle = left(p_libelle, 120), auteur = v_uid, maj_le = now()
+      where code = v_code;
+    if found then return v_code; end if;
+  end if;
+  delete from public.sauvegardes where code in (
+    select code from public.sauvegardes where auteur = v_uid order by maj_le desc offset 4
+  );
+  for attempt in 1..20 loop
+    v_code := '';
+    for i in 1..6 loop
+      v_code := v_code || substr(v_alpha, 1 + floor(random() * length(v_alpha))::int, 1);
+    end loop;
+    begin
+      insert into public.sauvegardes (code, auteur, donnees, libelle) values (v_code, v_uid, p_donnees, left(p_libelle, 120));
+      return v_code;
+    exception when unique_violation then
+    end;
+  end loop;
+  raise exception 'impossible de créer le code, réessayez';
+end;
+$$;
+
+create or replace function public.recuperer_sauvegarde(p_code text)
+returns json language plpgsql stable security definer set search_path = ''
+as $$
+declare v_s public.sauvegardes;
+begin
+  if auth.uid() is null then raise exception 'connexion requise'; end if;
+  select * into v_s from public.sauvegardes where code = upper(trim(p_code));
+  if not found then raise exception 'sauvegarde introuvable'; end if;
+  return json_build_object('code', v_s.code, 'donnees', v_s.donnees, 'libelle', v_s.libelle, 'maj_le', v_s.maj_le);
+end;
+$$;
+
+revoke all on function public.envoyer_sauvegarde(text, text, text) from public, anon;
+revoke all on function public.recuperer_sauvegarde(text) from public, anon;
+grant execute on function public.envoyer_sauvegarde(text, text, text) to authenticated;
+grant execute on function public.recuperer_sauvegarde(text) to authenticated;

@@ -20,6 +20,8 @@ function readable(error) {
   const m = (error && (error.message || String(error))) || 'Erreur inconnue';
   if (/anonymous/i.test(m)) return 'Les connexions invitées ne sont pas activées sur le serveur.';
   if (/fetch|network|Failed to/i.test(m)) return 'Pas de connexion au serveur. Vérifiez internet.';
+  if (/sauvegarde introuvable/.test(m)) return 'Aucune sauvegarde avec ce code.';
+  if (/trop volumineuse/.test(m)) return 'Sauvegarde trop volumineuse pour être envoyée.';
   if (/introuvable/.test(m)) return 'Aucun salon avec ce code.';
   if (/complet/.test(m)) return 'Ce salon est complet.';
   if (/commencé/.test(m)) return 'La partie de ce salon a déjà commencé.';
@@ -126,4 +128,13 @@ export class Room {
     try { if (this.channel) { await this.channel.untrack(); await client.removeChannel(this.channel); } } catch { /* déjà fermé */ }
     if (leave) { try { await leaveRoomRpc(this.code); } catch { /* le ménage automatique s'en chargera */ } }
   }
+}
+
+// ---------------------------------------------------------------- transfert de parties solo entre appareils
+export async function uploadSave(code, packed, label) {
+  return rpc('envoyer_sauvegarde', { p_code: code || null, p_donnees: packed, p_libelle: label || null });
+}
+
+export async function downloadSave(code) {
+  return rpc('recuperer_sauvegarde', { p_code: code });
 }

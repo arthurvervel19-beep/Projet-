@@ -56,6 +56,21 @@ téléphone, branché sur le même Wi-Fi. Fonctionne aussi sur iPhone et iPad.
 | Construire | Choisir le bâtiment, toucher ou glisser pour le placer, valider avec le bouton vert ; pour un mur, glisser le long du tracé |
 | Touche « retour » d'Android | Annuler, puis pause ; quitte depuis le menu |
 
+## Sauvegarder une partie solo
+
+- **Sauvegarde automatique** toutes les minutes, à l'ouverture du menu pause et quand le jeu passe
+  en arrière-plan. Bouton **Sauvegarder** et **Sauvegarder et quitter** dans le menu pause.
+- Au menu principal, **Reprendre** relance la partie en cours (une seule partie en cours par
+  appareil ; « Nouvelle partie » la remplace). Une partie terminée ou abandonnée est effacée.
+- **Changer d'appareil** : dans le menu pause, **Envoyer vers un autre appareil** donne un code de
+  6 caractères. Sur l'autre appareil : menu, « Reprendre une partie commencée sur un autre
+  appareil », taper le code. Les envois suivants mettent à jour le même code, pour passer du PC au
+  téléphone et inversement. Quiconque connaît le code peut récupérer la partie ; les sauvegardes
+  non mises à jour depuis 60 jours sont effacées du serveur.
+- La sauvegarde contient tout l'état de la partie et de l'IA ; une partie reprise continue
+  exactement comme si elle n'avait pas été interrompue (vérifié par les tests). Elle pèse
+  environ 50 à 70 Ko une fois compressée.
+
 ## Jouer en ligne à deux
 
 Le jeu est publié sur **Vercel** (offre gratuite) à chaque mise à jour de la branche `main`.
@@ -205,6 +220,7 @@ public/js/dmath.js   calculs identiques sur tous les navigateurs (distance, sinu
 public/js/net.js     multijoueur « lockstep » : tours, envoi des ordres, contrôle de synchronisation
 public/js/online.js  connexion Supabase : compte invité, salons, canal temps réel
 public/js/lobby.js   menu « En ligne » : création, code, salle d'attente, lancement
+public/js/save.js    sauvegarde des parties solo (appareil et transfert par code)
 public/vendor/supabase.js  client Supabase (licence MIT), chargé seulement en ligne
 supabase/salons.sql  structure de la base des salons et règles d'accès
 public/manifest.webmanifest, public/icons/  icône et réglages d'installation sur l'écran d'accueil
@@ -247,5 +263,4 @@ ou une carte graphique intégrée, choisissez **Équilibrée** ou **Performance*
 
 - Multijoueur à 3 ou 4 joueurs, équipes et IA alliées en ligne
 - Revenir dans une partie en ligne après avoir rechargé la page
-- Sauvegarde et chargement des parties
 - Unités navales, moines et conversion

@@ -9,6 +9,8 @@ import { Renderer3D, webglAvailable } from './r3d/renderer3d.js';
 import { resIconURL, icon } from './icons.js';
 import { Lockstep, createNetGame } from './net.js';
 import { setupLobby } from './lobby.js';
+import { saveLocal, loadLocal, localInfo, clearLocal, restoreGame, serializeGame, pack, unpack, cloudCode, setCloudCode } from './save.js';
+import { uploadSave, downloadSave } from './online.js';
 
 const $ = (id) => document.getElementById(id);
 window.__adrReady = true; // le jeu a démarré (voir le message de secours dans index.html)
@@ -156,9 +158,122 @@ function start() {
       startRes: rich ? RICH_START : undefined,
     });
     const ai = new AI(game, 1, difficulty);
-    beginGame({ game, me: 0, ai, seed, q, civ: myCiv, intro: `${CIVS[myCiv].realm} contre ${CIVS[aiCiv].realm} — carte n°${seed}. Bonne partie !` });
+    setCloudCode(null); // nouvelle partie : un nouveau code sera créé au prochain envoi
+    beginGame({
+      game, me: 0, ai, seed, q, civ: myCiv, difficulty,
+      label: `${CIVS[myCiv].name} contre ${CIVS[aiCiv].name}`,
+      intro: `${CIVS[myCiv].realm} contre ${CIVS[aiCiv].realm} — carte n°${seed}. Bonne partie !`,
+    });
+    saveNow(state, true);
   }, 60);
 }
+
+// ------------------------------------------------------------------ sauvegarde des parties solo
+const fmtDate = (t) => new Date(t).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+const fmtTime = (s) => (s >= 3600 ? `${Math.floor(s / 3600)} h ${String(Math.floor(s / 60) % 60).padStart(2, '0')}` : `${Math.floor(s / 60)} min`);
+
+function refreshSaveBox() {
+  const info = localInfo();
+  $('save-box').classList.toggle('hidden', !info);
+  $('save-warn').classList.toggle('hidden', !info);
+  $('start-btn').classList.toggle('secondary', !!info);
+  $('start-btn').textContent = info ? 'Nouvelle partie' : 'Lancer la partie';
+  if (info) $('save-info').textContent = `${info.label || 'Partie solo'} · ${fmtTime(info.time || 0)} de jeu · sauvegardée le ${fmtDate(info.savedAt)}`;
+}
+
+// sauvegarde la partie solo en cours sur l'appareil (silent : sans message)
+async function saveNow(s, silent = false) {
+  if (!s || s.net || s.saving || s.game.winner !== null || s.ended) return false;
+  s.saving = true;
+  try {
+    const ok = await saveLocal(s);
+    s.lastSave = performance.now();
+    if (!silent) s.ui.msg(ok ? 'Partie sauvegardée.' : 'Sauvegarde impossible : stockage du navigateur plein ou bloqué.', ok ? 'good' : 'warn');
+    return ok;
+  } catch (e) {
+    if (!silent) s.ui.msg('Sauvegarde impossible.', 'warn');
+    console.warn(e);
+    return false;
+  } finally { s.saving = false; }
+}
+
+// reprend une partie à partir de ses données (sauvegarde locale ou reçue d'un autre appareil)
+function resumeFrom(data, intro) {
+  audio.init();
+  audio.sfxPlay('click');
+  goFullscreen();
+  $('loading').classList.remove('hidden');
+  setTimeout(() => {
+    let restored;
+    try { restored = restoreGame(data); } catch (e) {
+      $('loading').classList.add('hidden');
+      $('cloud-status').textContent = e.message;
+      $('cloud-status').classList.add('err');
+      return;
+    }
+    stopDemo();
+    const { game, ai } = restored;
+    const me = data.humanPlayer;
+    if (data.speed) setSpeed(String(data.speed));
+    beginGame({ game, me, ai, seed: data.seed, q: quality(), civ: game.players[me].civ, difficulty: data.difficulty, label: data.label, intro });
+    saveNow(state, true);
+  }, 60);
+}
+
+$('resume-btn-menu').addEventListener('click', async () => {
+  try { resumeFrom(await loadLocal(), 'Partie reprise. Bon retour !'); } catch (e) {
+    $('save-info').textContent = `Impossible de reprendre : ${e.message}`;
+  }
+});
+
+// envoi vers un autre appareil : la sauvegarde part sur le serveur, un code permet de la récupérer
+$('cloud-send').addEventListener('click', async () => {
+  const s = state;
+  if (!s || s.net) return;
+  const st = $('save-status');
+  st.classList.remove('err');
+  st.textContent = 'Envoi en cours…';
+  $('cloud-send').disabled = true;
+  try {
+    const data = serializeGame(s.game, s.ai, { difficulty: s.difficulty, label: s.label, savedAt: Date.now(), speed: s.speed });
+    const code = await uploadSave(cloudCode(), await pack(data), s.label);
+    setCloudCode(code);
+    st.innerHTML = `Code : <b>${code}</b><br>Sur l'autre appareil : menu, « Reprendre une partie commencée sur un autre appareil ».`;
+    saveNow(s, true);
+  } catch (e) {
+    st.textContent = e.message || 'Envoi impossible.';
+    st.classList.add('err');
+  } finally { $('cloud-send').disabled = false; }
+});
+
+$('save-btn').addEventListener('click', async () => {
+  const ok = await saveNow(state);
+  $('save-status').classList.toggle('err', !ok);
+  $('save-status').textContent = ok ? `Partie sauvegardée à ${new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}.` : 'Sauvegarde impossible.';
+});
+
+const cloudInput = $('cloud-code');
+cloudInput.addEventListener('input', () => { cloudInput.value = cloudInput.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6); });
+cloudInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') $('cloud-load').click(); });
+$('cloud-load').addEventListener('click', async () => {
+  const code = cloudInput.value.trim().toUpperCase();
+  const st = $('cloud-status');
+  st.classList.remove('err');
+  if (!/^[A-Z2-9]{6}$/.test(code)) { st.textContent = 'Le code fait 6 caractères.'; st.classList.add('err'); return; }
+  st.textContent = 'Récupération…';
+  $('cloud-load').disabled = true;
+  try {
+    const res = await downloadSave(code);
+    const data = await unpack(res.donnees);
+    setCloudCode(code); // les prochains envois mettront à jour ce même code
+    st.textContent = '';
+    resumeFrom(data, `Partie récupérée (code ${code}). Bon retour !`);
+  } catch (e) {
+    st.textContent = e.message || 'Récupération impossible.';
+    st.classList.add('err');
+  } finally { $('cloud-load').disabled = false; }
+});
+refreshSaveBox();
 
 // ------------------------------------------------------------------ partie en ligne
 const lobby = setupLobby({
@@ -182,7 +297,7 @@ function startOnline({ seed, size, rich, players, me }) {
 }
 
 // mise en place commune aux parties solo et en ligne
-function beginGame({ game, me, ai = null, net = null, seed, q, civ, intro }) {
+function beginGame({ game, me, ai = null, net = null, seed, q, civ, intro, label = '', difficulty = 'normal' }) {
   game.sound = true;
   const renderer = makeRenderer(game, me, q, freshCanvas('game'));
   const ui = new UI(game, renderer, me, audio);
@@ -190,7 +305,8 @@ function beginGame({ game, me, ai = null, net = null, seed, q, civ, intro }) {
   const mine = game.players[me];
   renderer.centerOn(mine.startX + 1, mine.startY + 1);
   if (state) { state.stop = true; state.ui.destroy(); if (state.renderer.dispose) state.renderer.dispose(); }
-  state = { game, renderer, ui, ai, net, me, acc: 0, last: performance.now(), speed: net ? 1 : +$('speed').value, paused: false, stop: false, seed };
+  state = { game, renderer, ui, ai, net, me, acc: 0, last: performance.now(), speed: net ? 1 : +$('speed').value, paused: false, stop: false, seed, label, difficulty, lastSave: performance.now() };
+  $('save-status').textContent = '';
   ui.onPause = () => setPaused(!state.paused);
   document.body.classList.toggle('in-mp', !!net);
   $('pause-title').textContent = net ? 'Menu' : 'Pause';
@@ -224,6 +340,7 @@ function beginGame({ game, me, ai = null, net = null, seed, q, civ, intro }) {
 
 function setPaused(p) {
   if (!state) return;
+  if (p && !state.paused) saveNow(state, true);
   state.paused = p;
   state.ui.paused = p;
   $('pause').classList.toggle('hidden', !p);
@@ -244,6 +361,7 @@ function loop(s, now) {
       steps++;
     }
   }
+  if (!s.net && !s.paused && now - s.lastSave > 60000) saveNow(s, true);
   s.ui.update(dt);
   s.renderer.draw(Math.min(1, s.acc / TICK), s.ui);
   if (s.game.winner !== null && !s.ended) { s.ended = true; showEnd(s); }
@@ -283,6 +401,7 @@ $('mp-wait-end').addEventListener('click', () => {
 
 function showEnd(s) {
   const g = s.game;
+  if (!s.net) { clearLocal(); setCloudCode(null); }
   const won = g.winner === s.me;
   if (s.net) $('mp-wait').classList.add('hidden');
   if (s.net && won && !g.victoryReason && g.players.some((p) => p.resigned)) g.victoryReason = 'resign';
@@ -305,17 +424,33 @@ function updateMusicBtn() { $('music-btn').classList.toggle('off', audio.muted);
 
 $('start-btn').addEventListener('click', start);
 window.__start = start;
-$('again-btn').addEventListener('click', () => {
+// retour au menu (fin de partie, ou « Sauvegarder et quitter » en solo)
+function backToMenu() {
   if (state && state.net) { lobby.leave(); document.body.classList.remove('in-mp'); }
   $('end').classList.add('hidden');
+  $('pause').classList.add('hidden');
+  $('mp-wait').classList.add('hidden');
+  const msgs = document.getElementById('messages'); if (msgs) msgs.innerHTML = '';
+  const panel = document.querySelector('#menu .panel'); if (panel) panel.scrollTop = 0;
   $('menu').classList.remove('hidden');
+  document.querySelector('.credits').classList.remove('hidden');
   $('topbar').classList.add('hidden');
   $('bottom').classList.add('hidden');
   if (state) { state.stop = true; state.ui.destroy(); if (state.renderer.dispose) state.renderer.dispose(); }
   state = null;
   audio.setScene('menu');
+  refreshSaveBox();
   startDemo();
+}
+
+$('save-quit').addEventListener('click', async () => {
+  if (!state || state.net) return;
+  const ok = await saveNow(state);
+  if (!ok) { $('save-status').textContent = 'Sauvegarde impossible : la partie n\'a pas été quittée.'; $('save-status').classList.add('err'); return; }
+  backToMenu();
 });
+
+$('again-btn').addEventListener('click', backToMenu);
 $('resume-btn').addEventListener('click', () => setPaused(false));
 $('pause-btn').addEventListener('click', () => setPaused(!state.paused));
 $('quit-btn').addEventListener('click', () => {
@@ -346,7 +481,7 @@ updateMusicBtn();
 window.addEventListener('pointerdown', () => { audio.init(); if (!state) audio.setScene('menu'); }, { once: true });
 
 // application en arrière-plan : la partie se met en pause et le son s'arrête
-window.__appPause = () => { if (state && !state.net && !state.ended && !state.paused && state.game.winner === null) setPaused(true); audio.suspend(); };
+window.__appPause = () => { if (state && !state.net) saveNow(state, true); if (state && !state.net && !state.ended && !state.paused && state.game.winner === null) setPaused(true); audio.suspend(); };
 window.__appResume = () => audio.resume();
 document.addEventListener('visibilitychange', () => { if (document.hidden) window.__appPause(); else window.__appResume(); });
 // touche « retour » d'Android : annuler, puis pause ; « exit » quitte l'application

@@ -68,6 +68,10 @@
         <button id="tab-solo" class="tab on" role="tab" aria-selected="true">Solo</button>
         <button id="tab-online" class="tab" role="tab" aria-selected="false">En ligne</button>
       </div>
+      <div id="save-box" class="save-box solo-only hidden">
+        <div class="save-text"><b>Partie en cours</b><span id="save-info"></span></div>
+        <button id="resume-btn-menu" class="big">Reprendre</button>
+      </div>
       <div class="form">
         <label class="online-only">Votre pseudo
           <input id="mp-name" maxlength="16" placeholder="Votre nom" autocomplete="nickname">
@@ -113,6 +117,15 @@
       </div>
       <div id="civ-card" class="civ-card"></div>
       <button id="start-btn" class="big solo-only">Lancer la partie</button>
+      <p id="save-warn" class="mp-hint solo-only hidden">Lancer une nouvelle partie remplacera la partie en cours.</p>
+      <details id="cloud-get" class="solo-only cloud-get">
+        <summary>Reprendre une partie commencée sur un autre appareil</summary>
+        <div class="mp-join">
+          <input id="cloud-code" maxlength="6" placeholder="CODE" autocomplete="off" autocapitalize="characters" spellcheck="false" aria-label="Code de sauvegarde">
+          <button id="cloud-load">Récupérer</button>
+        </div>
+        <p id="cloud-status" class="mp-status" role="status"></p>
+      </details>
       <div id="mp" class="online-only">
         <div id="mp-home" class="mp-row">
           <button id="mp-create" class="big">Créer un salon</button>
@@ -175,6 +188,12 @@
         </label>
       </div>
       <button id="resume-btn" class="big">Reprendre</button>
+      <div class="pause-save solo-game-only">
+        <button id="save-btn">Sauvegarder</button>
+        <button id="cloud-send">Envoyer vers un autre appareil</button>
+        <button id="save-quit">Sauvegarder et quitter</button>
+        <p id="save-status" class="mp-status" role="status"></p>
+      </div>
       <button id="quit-btn" class="ghost">Abandonner la partie</button>
     </div>
   </div>
